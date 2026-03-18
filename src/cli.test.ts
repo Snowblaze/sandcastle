@@ -157,4 +157,20 @@ describe("sandcastle CLI", () => {
       expect(output).toContain("No .sandcastle/ found");
     }
   });
+
+  it("interactive command errors when .sandcastle/ is missing", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "cli-host-"));
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    // No .sandcastle/ directory — interactive should fail
+    try {
+      await runCli("interactive", hostDir);
+      expect.fail("Expected command to fail");
+    } catch (err: unknown) {
+      const { stdout, stderr } = err as { stdout: string; stderr: string };
+      const output = stdout + stderr;
+      expect(output).toContain("No .sandcastle/ found");
+    }
+  });
 });

@@ -14,8 +14,8 @@ import {
 } from "./DockerLifecycle.js";
 import { scaffold } from "./InitService.js";
 import { orchestrate } from "./Orchestrator.js";
-import { SandboxError } from "./Sandbox.js";
-import { DockerSandboxFactory } from "./SandboxFactory.js";
+import { Sandbox, SandboxError } from "./Sandbox.js";
+import { DockerSandboxFactory, SandboxFactory } from "./SandboxFactory.js";
 import { syncIn, syncOut } from "./SyncService.js";
 import { resolveTokens } from "./TokenResolver.js";
 
@@ -346,102 +346,131 @@ const runCommand = Command.make(
 
 // --- Interactive command ---
 
+const interactiveSession = (options: {
+  hostRepoDir: string;
+  sandboxRepoDir: string;
+  config: import("./Config.js").SandcastleConfig;
+}): Effect.Effect<void, SandboxError, SandboxFactory> =>
+  Effect.gen(function* () {
+    const { hostRepoDir, sandboxRepoDir, config } = options;
+    const factory = yield* SandboxFactory;
+
+    yield* factory.withSandbox(
+      Effect.gen(function* () {
+        const sandbox = yield* Sandbox;
+
+        // Sync in
+        yield* Console.log("Syncing repo into sandbox...");
+        yield* syncIn(hostRepoDir, sandboxRepoDir, config);
+
+        // Record base HEAD for sync-out
+        const baseHeadResult = yield* sandbox.exec("git rev-parse HEAD", {
+          cwd: sandboxRepoDir,
+        });
+        if (baseHeadResult.exitCode !== 0) {
+          yield* Effect.fail(
+            new SandboxError(
+              "interactive",
+              `Failed to get sandbox HEAD: ${baseHeadResult.stderr}`,
+            ),
+          );
+        }
+        const baseHead = baseHeadResult.stdout.trim();
+
+        // Get container ID for docker exec -it
+        const hostnameResult = yield* sandbox.exec("hostname");
+        const containerId = hostnameResult.stdout.trim();
+
+        // Launch interactive Claude session with TTY passthrough
+        yield* Console.log("Launching interactive Claude session...");
+        yield* Console.log("");
+
+        const exitCode = yield* Effect.async<number, SandboxError>((resume) => {
+          const proc = spawn(
+            "docker",
+            [
+              "exec",
+              "-it",
+              "-w",
+              sandboxRepoDir,
+              containerId,
+              "claude",
+              "--dangerously-skip-permissions",
+              "--model",
+              "claude-opus-4-6",
+            ],
+            { stdio: "inherit" },
+          );
+
+          proc.on("error", (error) => {
+            resume(
+              Effect.fail(
+                new SandboxError(
+                  "interactive",
+                  `Failed to launch Claude: ${error.message}`,
+                ),
+              ),
+            );
+          });
+
+          proc.on("close", (code) => {
+            resume(Effect.succeed(code ?? 0));
+          });
+        });
+
+        yield* Console.log("");
+        yield* Console.log(
+          `Session ended (exit code ${exitCode}). Syncing changes back...`,
+        );
+
+        // Sync out
+        yield* syncOut(hostRepoDir, sandboxRepoDir, baseHead);
+
+        yield* Console.log("Sync complete.");
+      }),
+    );
+  });
+
 const interactiveCommand = Command.make(
   "interactive",
   {
-    container: containerOption,
+    imageName: imageNameOption,
   },
-  ({ container }) =>
+  ({ imageName }) =>
     Effect.gen(function* () {
       const hostRepoDir = process.cwd();
+      yield* requireConfigDir(hostRepoDir);
+
       const repoName = hostRepoDir.split("/").pop()!;
       const sandboxRepoDir = `${SANDBOX_REPOS_DIR}/${repoName}`;
 
+      // Resolve auth tokens
+      const tokens = yield* Effect.tryPromise({
+        try: () => resolveTokens(hostRepoDir),
+        catch: (e) =>
+          new SandboxError(
+            "interactive",
+            `${e instanceof Error ? e.message : e}`,
+          ),
+      });
+
       const config = yield* readConfig(hostRepoDir);
-      const layer = DockerSandbox.layer(container);
 
       yield* Console.log("=== SANDCASTLE (Interactive) ===");
-      yield* Console.log(`Container: ${container}`);
+      yield* Console.log(`Image: ${imageName}`);
       yield* Console.log("");
 
-      // Sync in
-      yield* Console.log("Syncing repo into sandbox...");
-      const { branch: _branch } = yield* syncIn(
+      const factoryLayer = DockerSandboxFactory.layer(
+        imageName,
+        tokens.oauthToken,
+        tokens.ghToken,
+      );
+
+      yield* interactiveSession({
         hostRepoDir,
         sandboxRepoDir,
         config,
-      ).pipe(Effect.provide(layer));
-
-      // Record base HEAD for sync-out
-      const baseHead = yield* Effect.async<string, SandboxError>((resume) => {
-        execFile(
-          "docker",
-          ["exec", "-w", sandboxRepoDir, container, "git", "rev-parse", "HEAD"],
-          (error, stdout) => {
-            if (error) {
-              resume(
-                Effect.fail(
-                  new SandboxError(
-                    "interactive",
-                    `Failed to get sandbox HEAD: ${error.message}`,
-                  ),
-                ),
-              );
-            } else {
-              resume(Effect.succeed(stdout.toString().trim()));
-            }
-          },
-        );
-      });
-
-      // Launch interactive Claude session with TTY passthrough
-      yield* Console.log("Launching interactive Claude session...");
-      yield* Console.log("");
-
-      const exitCode = yield* Effect.async<number, SandboxError>((resume) => {
-        const proc = spawn(
-          "docker",
-          [
-            "exec",
-            "-it",
-            "-w",
-            sandboxRepoDir,
-            container,
-            "claude",
-            "--dangerously-skip-permissions",
-            "--model",
-            "claude-opus-4-6",
-          ],
-          { stdio: "inherit" },
-        );
-
-        proc.on("error", (error) => {
-          resume(
-            Effect.fail(
-              new SandboxError(
-                "interactive",
-                `Failed to launch Claude: ${error.message}`,
-              ),
-            ),
-          );
-        });
-
-        proc.on("close", (code) => {
-          resume(Effect.succeed(code ?? 0));
-        });
-      });
-
-      yield* Console.log("");
-      yield* Console.log(
-        `Session ended (exit code ${exitCode}). Syncing changes back...`,
-      );
-
-      // Sync out
-      yield* syncOut(hostRepoDir, sandboxRepoDir, baseHead).pipe(
-        Effect.provide(layer),
-      );
-
-      yield* Console.log("Sync complete.");
+      }).pipe(Effect.provide(factoryLayer));
     }),
 );
 
