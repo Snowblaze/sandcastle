@@ -13,8 +13,7 @@ import {
   startContainer,
 } from "./DockerLifecycle.js";
 import { scaffold } from "./InitService.js";
-import { orchestrate } from "./Orchestrator.js";
-import { resolvePrompt } from "./PromptResolver.js";
+import { run } from "./run.js";
 import { SandboxError } from "./Sandbox.js";
 import { DockerSandboxFactory, SandboxFactory } from "./SandboxFactory.js";
 import { withSandboxLifecycle } from "./SandboxLifecycle.js";
@@ -266,28 +265,8 @@ const runCommand = Command.make(
       const hostRepoDir = process.cwd();
       yield* requireConfigDir(hostRepoDir);
 
-      const repoName = hostRepoDir.split("/").pop()!;
-      const sandboxRepoDir = `${SANDBOX_REPOS_DIR}/${repoName}`;
-
-      // Resolve auth tokens
-      const tokens = yield* Effect.tryPromise({
-        try: () => resolveTokens(hostRepoDir),
-        catch: (e) =>
-          new SandboxError("run", `${e instanceof Error ? e.message : e}`),
-      });
-
-      // Resolve prompt via PromptResolver
-      const resolvedPrompt = yield* resolvePrompt({
-        prompt: prompt._tag === "Some" ? prompt.value : undefined,
-        promptFile:
-          promptFile._tag === "Some" ? resolve(promptFile.value) : undefined,
-        cwd: hostRepoDir,
-      });
-
-      // Read config
+      // Read config to resolve iterations: CLI flag > config > default (5)
       const config = yield* readConfig(hostRepoDir);
-
-      // Resolve iterations: CLI flag > config > default (5)
       const resolvedIterations =
         iterations._tag === "Some"
           ? iterations.value
@@ -303,20 +282,21 @@ const runCommand = Command.make(
       }
       yield* Console.log(``);
 
-      const factoryLayer = DockerSandboxFactory.layer(
-        imageName,
-        tokens.oauthToken,
-        tokens.ghToken,
-      );
-
-      const result = yield* orchestrate({
-        hostRepoDir,
-        sandboxRepoDir,
-        iterations: resolvedIterations,
-        config,
-        prompt: resolvedPrompt,
-        branch: resolvedBranch,
-      }).pipe(Effect.provide(factoryLayer));
+      const result = yield* Effect.tryPromise({
+        try: () =>
+          run({
+            prompt: prompt._tag === "Some" ? prompt.value : undefined,
+            promptFile:
+              promptFile._tag === "Some"
+                ? resolve(promptFile.value)
+                : undefined,
+            maxIterations: resolvedIterations,
+            branch: resolvedBranch,
+            _imageName: imageName,
+          }),
+        catch: (e) =>
+          new SandboxError("run", `${e instanceof Error ? e.message : e}`),
+      });
 
       if (result.complete) {
         yield* Console.log(

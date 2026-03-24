@@ -3,6 +3,14 @@
   "version": "0.0.1",
   "description": "CLI for orchestrating AI agents in isolated sandbox environments",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "bin": {
     "sandcastle": "./dist/main.js"
   },
