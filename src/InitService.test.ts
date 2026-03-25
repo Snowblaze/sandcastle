@@ -154,6 +154,47 @@ describe("InitService scaffold", () => {
     expect(prompt1).toBe(prompt2);
   });
 
+  it("simple-loop template produces main.ts and prompt.md", async () => {
+    const dir = await makeDir();
+    await scaffold(dir, fakeProvider, "simple-loop");
+
+    const configDir = join(dir, ".sandcastle");
+    const { access } = await import("node:fs/promises");
+
+    // Both files must exist
+    await expect(access(join(configDir, "main.ts"))).resolves.toBeUndefined();
+    await expect(access(join(configDir, "prompt.md"))).resolves.toBeUndefined();
+  });
+
+  it("simple-loop main.ts contains sandcastle.run() with expected options", async () => {
+    const dir = await makeDir();
+    await scaffold(dir, fakeProvider, "simple-loop");
+
+    const mainTs = await readFile(join(dir, ".sandcastle", "main.ts"), "utf-8");
+    expect(mainTs).toContain("run(");
+    expect(mainTs).toContain("maxIterations");
+    expect(mainTs).toContain("3");
+    expect(mainTs).toContain("claude-sonnet-4-6");
+    expect(mainTs).toContain("promptFile");
+    expect(mainTs).toContain("npm install");
+    expect(mainTs).toContain("onSandboxReady");
+  });
+
+  it("simple-loop prompt.md contains shell expressions for issues and commit history", async () => {
+    const dir = await makeDir();
+    await scaffold(dir, fakeProvider, "simple-loop");
+
+    const prompt = await readFile(
+      join(dir, ".sandcastle", "prompt.md"),
+      "utf-8",
+    );
+    // Shell expressions for dynamic context
+    expect(prompt).toContain("!`gh issue");
+    expect(prompt).toContain("!`git log");
+    // Completion signal
+    expect(prompt).toContain("<promise>COMPLETE</promise>");
+  });
+
   it("unknown template name throws a clear error", async () => {
     const dir = await makeDir();
     await expect(scaffold(dir, fakeProvider, "nonexistent")).rejects.toThrow(
