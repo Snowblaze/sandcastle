@@ -57,9 +57,10 @@ You must set either `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (or both). 
 
 Scaffolds the `.sandcastle/` config directory and builds the Docker image. This is the first command you run in a new repo.
 
-| Option         | Required | Default            | Description       |
-| -------------- | -------- | ------------------ | ----------------- |
-| `--image-name` | No       | `sandcastle:local` | Docker image name |
+| Option         | Required | Default            | Description                                |
+| -------------- | -------- | ------------------ | ------------------------------------------ |
+| `--image-name` | No       | `sandcastle:local` | Docker image name                          |
+| `--agent`      | No       | `claude-code`      | Agent provider to use (e.g. `claude-code`) |
 
 Creates the following files:
 
@@ -67,8 +68,9 @@ Creates the following files:
 .sandcastle/
 ├── Dockerfile      # Sandbox environment (customize as needed)
 ├── prompt.md       # Agent instructions
+├── config.json     # Agent provider and defaults
 ├── .env.example    # Token placeholders
-└── .gitignore      # Ignores .env
+└── .gitignore      # Ignores .env, patches/, logs/
 ```
 
 Errors if `.sandcastle/` already exists to prevent overwriting customizations.
@@ -77,9 +79,10 @@ Errors if `.sandcastle/` already exists to prevent overwriting customizations.
 
 Rebuilds the Docker image from an existing `.sandcastle/` directory. Use this after modifying the Dockerfile.
 
-| Option         | Required | Default            | Description       |
-| -------------- | -------- | ------------------ | ----------------- |
-| `--image-name` | No       | `sandcastle:local` | Docker image name |
+| Option         | Required | Default            | Description                                                                       |
+| -------------- | -------- | ------------------ | --------------------------------------------------------------------------------- |
+| `--image-name` | No       | `sandcastle:local` | Docker image name                                                                 |
+| `--dockerfile` | No       | —                  | Path to a custom Dockerfile (build context will be the current working directory) |
 
 ### `sandcastle run`
 
@@ -93,6 +96,7 @@ Runs the orchestration loop: sync-in, invoke agent, sync-out, repeat.
 | `--prompt-file` | No       | `.sandcastle/prompt.md` | Path to the agent prompt file                                |
 | `--branch`      | No       | —                       | Target branch name for sandbox work                          |
 | `--model`       | No       | `claude-opus-4-6`       | Model to use for the agent                                   |
+| `--agent`       | No       | `claude-code`           | Agent provider to use                                        |
 
 Each iteration:
 
@@ -111,6 +115,7 @@ Opens an interactive Claude Code session inside the sandbox. Syncs your repo in,
 | -------------- | -------- | ------------------ | -------------------------- |
 | `--image-name` | No       | `sandcastle:local` | Docker image name          |
 | `--model`      | No       | `claude-opus-4-6`  | Model to use for the agent |
+| `--agent`      | No       | `claude-code`      | Agent provider to use      |
 
 ### `sandcastle remove-image`
 
@@ -151,6 +156,33 @@ Commands run **inside the sandbox** after sync-in and `onSandboxReady` hooks, so
 ```
 
 If any command exits with a non-zero code, the run fails immediately with an error — broken context is surfaced early rather than silently producing a bad prompt.
+
+### Prompt arguments with `{{KEY}}`
+
+Use `{{KEY}}` placeholders in your prompt to inject values from the `promptArgs` option. This is useful for reusing the same prompt file across multiple runs with different parameters.
+
+```typescript
+import { run } from "sandcastle";
+
+await run({
+  promptFile: "./my-prompt.md",
+  promptArgs: { ISSUE_NUMBER: 42, PRIORITY: "high" },
+});
+```
+
+In the prompt file:
+
+```markdown
+Work on issue #{{ISSUE_NUMBER}} (priority: {{PRIORITY}}).
+```
+
+Prompt argument substitution runs on the host before shell expression expansion, so `{{KEY}}` placeholders inside `` !`command` `` expressions are replaced first:
+
+```markdown
+!`gh issue view {{ISSUE_NUMBER}} --json body -q .body`
+```
+
+A `{{KEY}}` placeholder with no matching prompt argument is an error. Unused prompt arguments produce a warning.
 
 ### Early termination with `<promise>COMPLETE</promise>`
 
@@ -205,26 +237,35 @@ const result = await run({
 });
 
 console.log(result.iterationsRun); // number of iterations executed
-console.log(result.complete); // true if agent emitted <promise>COMPLETE</promise>
+console.log(result.wasCompletionSignalDetected); // true if agent emitted <promise>COMPLETE</promise>
+console.log(result.commits); // array of { sha } for commits created
+console.log(result.branch); // target branch name
 ```
 
 ### `RunOptions`
 
-| Option          | Type   | Default                 | Description                                            |
-| --------------- | ------ | ----------------------- | ------------------------------------------------------ |
-| `prompt`        | string | —                       | Inline prompt (mutually exclusive with `promptFile`)   |
-| `promptFile`    | string | `.sandcastle/prompt.md` | Path to prompt file (mutually exclusive with `prompt`) |
-| `maxIterations` | number | `5`                     | Maximum iterations to run                              |
-| `hooks`         | object | —                       | Lifecycle hooks (`onSandboxCreate`, `onSandboxReady`)  |
-| `branch`        | string | —                       | Target branch for sandbox work                         |
-| `model`         | string | `claude-opus-4-6`       | Model to use for the agent                             |
+| Option          | Type       | Default                 | Description                                            |
+| --------------- | ---------- | ----------------------- | ------------------------------------------------------ |
+| `prompt`        | string     | —                       | Inline prompt (mutually exclusive with `promptFile`)   |
+| `promptFile`    | string     | `.sandcastle/prompt.md` | Path to prompt file (mutually exclusive with `prompt`) |
+| `maxIterations` | number     | `5`                     | Maximum iterations to run                              |
+| `hooks`         | object     | —                       | Lifecycle hooks (`onSandboxCreate`, `onSandboxReady`)  |
+| `branch`        | string     | —                       | Target branch for sandbox work                         |
+| `model`         | string     | `claude-opus-4-6`       | Model to use for the agent                             |
+| `agent`         | string     | `claude-code`           | Agent provider name                                    |
+| `imageName`     | string     | `sandcastle:local`      | Docker image name for the sandbox                      |
+| `promptArgs`    | PromptArgs | —                       | Key-value map for `{{KEY}}` placeholder substitution   |
+| `logging`       | object     | file (auto-generated)   | `{ type: 'file', path }` or `{ type: 'stdout' }`       |
 
 ### `RunResult`
 
-| Field           | Type    | Description                             |
-| --------------- | ------- | --------------------------------------- |
-| `iterationsRun` | number  | Number of iterations that were executed |
-| `complete`      | boolean | Whether the agent signaled completion   |
+| Field                         | Type        | Description                             |
+| ----------------------------- | ----------- | --------------------------------------- |
+| `iterationsRun`               | number      | Number of iterations that were executed |
+| `wasCompletionSignalDetected` | boolean     | Whether the agent signaled completion   |
+| `stdout`                      | string      | Agent output                            |
+| `commits`                     | `{ sha }[]` | Commits created during the run          |
+| `branch`                      | string      | Target branch name                      |
 
 Tokens (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY`, `GH_TOKEN`) are resolved automatically from `.env`, `.sandcastle/.env`, and `process.env` — no need to pass them to the API.
 
@@ -259,6 +300,7 @@ Place a `.sandcastle/config.json` file to configure advanced behavior:
 
 ```json
 {
+  "agent": "claude-code",
   "hooks": {
     "onSandboxCreate": [
       { "command": "apt-get update && apt-get install -y some-tool" }
@@ -272,9 +314,11 @@ Place a `.sandcastle/config.json` file to configure advanced behavior:
 
 | Field                  | Type   | Description                                                                                                                  |
 | ---------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `agent`                | string | Agent provider name. Created by `sandcastle init`. Overridden by `--agent` CLI flag. Defaults to `claude-code`.              |
 | `hooks`                | object | Lifecycle hooks that run commands inside the sandbox. See below.                                                             |
 | `defaultMaxIterations` | number | Default number of agent iterations for `sandcastle run`. Overridden by the `--iterations` CLI flag. Defaults to 5 if unset.  |
 | `model`                | string | Default model for the agent (e.g. `claude-sonnet-4-6`). Overridden by the `--model` CLI flag. Defaults to `claude-opus-4-6`. |
+| `imageName`            | string | Default Docker image name. Overridden by `--image-name` CLI flag. Defaults to `sandcastle:local`.                            |
 
 ### Hooks
 
@@ -289,7 +333,7 @@ Hooks are arrays of `{ "command": "..." }` objects executed sequentially inside 
 
 **`onSandboxReady`** runs after the repo is synced in. Use it for dependency installation or build steps (e.g., `npm install`).
 
-This file is not created by `init` — create it manually when needed.
+`sandcastle init` creates a minimal `config.json` with the `agent` field. Add hooks and other fields as needed.
 
 ## How it works
 
@@ -306,7 +350,7 @@ This approach avoids GitHub round-trips and produces clean, replayable commit hi
 npm install
 npm run build    # Build with tsgo
 npm test         # Run tests with vitest
-npm run check    # Type-check
+npm run typecheck # Type-check
 ```
 
 ## License
