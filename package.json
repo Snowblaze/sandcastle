@@ -33,6 +33,7 @@
     "ai",
     "agent"
   ],
+  "packageManager": "pnpm@10.7.0",
   "license": "MIT",
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
