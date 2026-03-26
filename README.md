@@ -191,6 +191,17 @@ When the agent outputs `<promise>COMPLETE</promise>`, the orchestrator stops the
 
 This is useful for task-based workflows where the agent should stop once it has finished, rather than running all remaining iterations.
 
+You can override the default signal by passing `completionSignal` to `run()`:
+
+```ts
+await run({
+  // ...
+  completionSignal: "DONE",
+});
+```
+
+Tell the agent to output your chosen string in the prompt, and the orchestrator will stop when it detects it.
+
 ### Templates
 
 `sandcastle init` prompts you to choose a template, which scaffolds a ready-to-use prompt and `main.ts` suited to a specific workflow. Four templates are available:
