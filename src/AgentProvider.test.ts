@@ -284,6 +284,8 @@ describe("codex factory", () => {
     const command = provider.buildPrintCommand("do something");
     expect(command).toContain("gpt-5.4-mini");
     expect(command).toContain("--json");
+    expect(command).toContain("--skip-git-repo-check");
+    expect(command).toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
   it("buildPrintCommand shell-escapes the prompt", () => {
@@ -295,7 +297,7 @@ describe("codex factory", () => {
   it("buildPrintCommand shell-escapes the model", () => {
     const provider = codex("gpt-5.4-mini");
     const command = provider.buildPrintCommand("do something");
-    expect(command).toContain("-m 'gpt-5.4-mini'");
+    expect(command).toContain("--model 'gpt-5.4-mini'");
   });
 
   it("buildInteractiveArgs includes the binary and model", () => {
@@ -304,6 +306,7 @@ describe("codex factory", () => {
     expect(args[0]).toBe("codex");
     expect(args).toContain("gpt-5.4-mini");
     expect(args).toContain("--model");
+    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
   it("parseStreamLine extracts text and result from item.completed agent_message", () => {
@@ -323,6 +326,58 @@ describe("codex factory", () => {
     const line = JSON.stringify({
       type: "item.started",
       item: { type: "command_execution", command: "npm test" },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "tool_call", name: "Bash", args: "npm test" },
+    ]);
+  });
+
+  it("parseStreamLine extracts text from agent_message", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: "Hello world",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "text", text: "Hello world" },
+    ]);
+  });
+
+  it("parseStreamLine extracts result and usage from task_complete", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "task_complete",
+      last_agent_message: "Done",
+      num_turns: 3,
+      duration_ms: 12000,
+      last_token_usage: {
+        input_tokens: 52340,
+        output_tokens: 3201,
+        cached_input_tokens: 10000,
+      },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Done",
+        usage: {
+          input_tokens: 52340,
+          output_tokens: 3201,
+          cache_read_input_tokens: 10000,
+          cache_creation_input_tokens: 0,
+          total_cost_usd: 0,
+          num_turns: 3,
+          duration_ms: 12000,
+        },
+      },
+    ]);
+  });
+
+  it("parseStreamLine extracts exec_command_begin as a Bash tool call", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "exec_command_begin",
+      command: "npm test",
     });
     expect(provider.parseStreamLine(line)).toEqual([
       { type: "tool_call", name: "Bash", args: "npm test" },

@@ -17,12 +17,12 @@ describe("resolveEnv", () => {
     await mkdir(join(dir, ".sandcastle"));
     await writeFile(
       join(dir, ".sandcastle", ".env"),
-      "ANTHROPIC_API_KEY=sc-key\nGH_TOKEN=sc-gh\n",
+      "OPENAI_API_KEY=sc-key\nGH_TOKEN=sc-gh\n",
     );
 
     const env = await runResolveEnv(dir);
     expect(env).toEqual({
-      ANTHROPIC_API_KEY: "sc-key",
+      OPENAI_API_KEY: "sc-key",
       GH_TOKEN: "sc-gh",
     });
   });
@@ -121,7 +121,7 @@ describe("resolveEnv", () => {
   it("does no validation — returns whatever keys are present in .sandcastle/.env", async () => {
     const dir = await makeDir();
     await mkdir(join(dir, ".sandcastle"));
-    // Only custom keys, no ANTHROPIC_API_KEY or GH_TOKEN
+    // Only custom keys, no OPENAI_API_KEY or GH_TOKEN
     await writeFile(
       join(dir, ".sandcastle", ".env"),
       "NPM_TOKEN=npm123\nDATABASE_URL=pg://localhost\n",

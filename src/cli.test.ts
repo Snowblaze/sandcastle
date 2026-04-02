@@ -87,7 +87,7 @@ describe("sandcastle CLI", () => {
     await initRepo(hostDir);
 
     try {
-      await runCli("init --agent claude-code --template nonexistent", hostDir);
+      await runCli("init --agent codex --template nonexistent", hostDir);
       expect.fail("Expected command to fail");
     } catch (err: unknown) {
       const { stdout, stderr } = err as { stdout: string; stderr: string };
@@ -109,7 +109,7 @@ describe("sandcastle CLI", () => {
       const { stdout, stderr } = err as { stdout: string; stderr: string };
       const output = stdout + stderr;
       expect(output).toContain("nonexistent");
-      expect(output).toContain("claude-code");
+      expect(output).toContain("codex");
     }
   });
 });

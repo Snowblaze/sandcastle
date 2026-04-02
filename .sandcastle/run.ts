@@ -8,7 +8,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // Phase 1: Plan — orchestrator agent analyzes issues and picks parallelizable work
   const plan = await sandcastle.run({
     name: "Planner",
-    agent: sandcastle.claudeCode("claude-opus-4-6"),
+    agent: sandcastle.codex("gpt-5.3-codex"),
     promptFile: "./.sandcastle/plan-prompt.md",
     worktree: {
       mode: "none",
@@ -51,7 +51,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
       const result = await sandbox.run({
         name: "Implementer #" + issue.number,
-        agent: sandcastle.claudeCode("claude-opus-4-6"),
+        agent: sandcastle.codex("gpt-5.3-codex"),
         promptFile: "./.sandcastle/implement-prompt.md",
         promptArgs: {
           ISSUE_NUMBER: String(issue.number),
@@ -63,7 +63,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       if (result.commits.length > 0) {
         await sandbox.run({
           name: "Reviewer #" + issue.number,
-          agent: sandcastle.claudeCode("claude-opus-4-6"),
+          agent: sandcastle.codex("gpt-5.3-codex"),
           promptFile: "./.sandcastle/review-prompt.md",
           promptArgs: {
             ISSUE_NUMBER: String(issue.number),
@@ -119,7 +119,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   await sandcastle.run({
     name: "Merger",
     maxIterations: 10,
-    agent: sandcastle.claudeCode("claude-opus-4-6"),
+    agent: sandcastle.codex("gpt-5.3-codex"),
     promptFile: "./.sandcastle/merge-prompt.md",
     promptArgs: {
       BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),

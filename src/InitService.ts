@@ -134,13 +134,16 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
   && apt-get update && apt-get install -y gh \\
   && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
+# Create a non-root user for Codex to run as
 RUN useradd -m -s /bin/bash agent
-
-# Install Codex CLI (run as root before USER agent)
-RUN npm install -g @openai/codex
-
 USER agent
+
+# Install Codex CLI
+RUN npm config set prefix /home/agent/.local \\
+  && npm install -g @openai/codex
+
+# Add global npm binaries to PATH
+ENV PATH="/home/agent/.local/bin:$PATH"
 
 WORKDIR /home/agent
 
@@ -151,6 +154,13 @@ ENTRYPOINT ["sleep", "infinity"]
 `;
 
 const AGENT_REGISTRY: AgentEntry[] = [
+  {
+    name: "codex",
+    label: "Codex",
+    defaultModel: "gpt-5.4-mini",
+    factoryImport: "codex",
+    dockerfileTemplate: CODEX_DOCKERFILE,
+  },
   {
     name: "claude-code",
     label: "Claude Code",
@@ -164,13 +174,6 @@ const AGENT_REGISTRY: AgentEntry[] = [
     defaultModel: "claude-sonnet-4-6",
     factoryImport: "pi",
     dockerfileTemplate: PI_DOCKERFILE,
-  },
-  {
-    name: "codex",
-    label: "Codex",
-    defaultModel: "gpt-5.4-mini",
-    factoryImport: "codex",
-    dockerfileTemplate: CODEX_DOCKERFILE,
   },
 ];
 
@@ -270,9 +273,9 @@ const copyTemplateFiles = (
   });
 
 /**
- * Replace the agent factory import and call in a scaffolded main.ts.
+ * Replace the agent factory import and call in a scaffolded main file.
  *
- * Templates use `claudeCode` as the default factory. When a different agent or
+ * Templates use `codex` as the default factory. When a different agent or
  * model is selected, this function rewrites the import and factory calls.
  */
 const rewriteMainTs = (
@@ -300,10 +303,10 @@ const rewriteMainTs = (
       content = content.replace(/main\.mts/g, "main.ts");
     }
 
-    // Replace factory function name in imports (e.g. claudeCode → pi)
+    // Replace factory function name in imports (e.g. codex → pi)
     // and all factory calls with the correct model.
-    // Templates always use claudeCode as the placeholder factory.
-    content = content.replace(/\bclaudeCode\b/g, agent.factoryImport);
+    // Templates always use codex as the placeholder factory.
+    content = content.replace(/\bcodex\b/g, agent.factoryImport);
     // Replace model strings in factory calls: factoryImport("any-model")
     const factoryCallRe = new RegExp(
       `${agent.factoryImport}\\(["']([^"']+)["']\\)`,
