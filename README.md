@@ -35,7 +35,13 @@ npm install @ai-hero/sandcastle
 npx sandcastle init
 ```
 
-3. Edit `.sandcastle/.env` and fill in your default values for `OPENAI_API_KEY`
+3. Edit `.sandcastle/.env` and fill in your default values for `OPENAI_API_KEY` or `CODEX_AUTH_JSON_B64`
+
+   On Debian/Linux, you can populate `CODEX_AUTH_JSON_B64` from `~/.codex/auth.json`:
+
+   ```bash
+   CODEX_AUTH_JSON_B64="$(base64 -w0 ~/.codex/auth.json)"
+   ```
 
 ```bash
 cp .sandcastle/.env.example .sandcastle/.env

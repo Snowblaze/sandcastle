@@ -137,6 +137,23 @@ export const chownInContainer = (
   );
 
 /**
+ * Restore Codex auth from the CODEX_AUTH_JSON_B64 env var inside the container.
+ * No-op when the variable is unset or empty.
+ */
+export const restoreCodexAuth = (
+  containerName: string,
+): Effect.Effect<void, DockerError> =>
+  Effect.asVoid(
+    dockerExec([
+      "exec",
+      containerName,
+      "sh",
+      "-lc",
+      'if [ -n "${CODEX_AUTH_JSON_B64:-}" ]; then mkdir -p "$HOME/.codex" && printf "%s" "$CODEX_AUTH_JSON_B64" | base64 -d > "$HOME/.codex/auth.json" && chmod 600 "$HOME/.codex/auth.json"; fi',
+    ]),
+  );
+
+/**
  * Stop and remove a container without removing the image.
  */
 export const removeContainer = (

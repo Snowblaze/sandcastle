@@ -98,6 +98,7 @@ describe("InitService scaffold", () => {
       "utf-8",
     );
     expect(envExample).toContain("OPENAI_API_KEY=");
+    expect(envExample).toContain("CODEX_AUTH_JSON_B64=");
     expect(envExample).toContain("GH_TOKEN=");
   });
 

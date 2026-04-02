@@ -240,6 +240,36 @@ describe("WorktreeDockerSandboxFactory", () => {
     expect(runArgs).toContain("HOME=/home/agent");
   });
 
+  it("restores Codex auth.json from CODEX_AUTH_JSON_B64 when provided", async () => {
+    const layerWithCodexAuth = Layer.provide(
+      WorktreeDockerSandboxFactory.layer,
+      Layer.mergeAll(
+        Layer.succeed(WorktreeSandboxConfig, {
+          imageName: "test-image",
+          env: { CODEX_AUTH_JSON_B64: "eyJ0ZXN0IjoidHJ1ZSJ9" },
+          hostRepoDir,
+        }),
+        NodeFileSystem.layer,
+        SilentDisplay.layer(Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([])),
+      ),
+    );
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const factory = yield* SandboxFactory;
+        yield* factory.withSandbox(() => Effect.void);
+      }).pipe(Effect.provide(layerWithCodexAuth)),
+    );
+
+    const restoreCall = capturedArgs().find(
+      (args) =>
+        args[0] === "exec" &&
+        args.includes("CODEX_AUTH_JSON_B64") &&
+        args.includes('printf "%s" "$CODEX_AUTH_JSON_B64" | base64 -d > "$HOME/.codex/auth.json"'),
+    );
+    expect(restoreCall).toBeDefined();
+  });
+
   it("does not let user env override HOME", async () => {
     const layerWithHome = Layer.provide(
       WorktreeDockerSandboxFactory.layer,
