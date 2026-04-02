@@ -21,7 +21,8 @@ Required environment variables:
 
 | Variable | Description |
 | --- | --- |
-| `OPENAI_API_KEY` | OpenAI API key |
+| `OPENAI_API_KEY` | OpenAI API key. Optional when `CODEX_AUTH_JSON_B64` is set. |
+| `CODEX_AUTH_JSON_B64` | Base64-encoded `~/.codex/auth.json` for Codex CLI auth inside Docker. Optional when `OPENAI_API_KEY` is set. |
 | `GH_TOKEN` | GitHub personal access token |
 
 ## Custom Providers

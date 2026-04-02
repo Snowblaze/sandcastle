@@ -10,6 +10,7 @@ import {
   startContainer,
   removeContainer,
   chownInContainer,
+  restoreCodexAuth,
 } from "./DockerLifecycle.js";
 import {
   AgentError,
@@ -333,6 +334,7 @@ const startSandboxContainer = (
     Effect.andThen(
       chownInContainer(containerName, `${hostUid}:${hostGid}`, "/home/agent"),
     ),
+    Effect.andThen(restoreCodexAuth(containerName)),
     Effect.tap(() =>
       Effect.sync(() => {
         process.on("exit", cleanupContainerOnly);
