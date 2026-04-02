@@ -1,63 +1,66 @@
 import { describe, expect, it } from "vitest";
-import { claudeCode, pi } from "./AgentProvider.js";
+import { codex, pi } from "./AgentProvider.js";
 
-describe("claudeCode factory", () => {
-  it("returns a provider with name 'claude-code'", () => {
-    const provider = claudeCode("claude-opus-4-6");
-    expect(provider.name).toBe("claude-code");
+describe("codex factory", () => {
+  it("returns a provider with name 'codex'", () => {
+    const provider = codex("gpt-5.3-codex");
+    expect(provider.name).toBe("codex");
   });
 
   it("does not expose envManifest or dockerfileTemplate", () => {
-    const provider = claudeCode("claude-opus-4-6");
+    const provider = codex("gpt-5.3-codex");
     expect(provider).not.toHaveProperty("envManifest");
     expect(provider).not.toHaveProperty("dockerfileTemplate");
   });
 
-  it("buildPrintCommand includes the model", () => {
-    const provider = claudeCode("claude-sonnet-4-6");
+  it("buildPrintCommand includes the model and codex exec flags", () => {
+    const provider = codex("gpt-5.4");
     const command = provider.buildPrintCommand("do something");
-    expect(command).toContain("claude-sonnet-4-6");
-    expect(command).toContain("--output-format stream-json");
-    expect(command).toContain("--print");
+    expect(command).toContain("gpt-5.4");
+    expect(command).toContain("codex exec");
+    expect(command).toContain("--json");
+    expect(command).toContain(
+      "--dangerously-bypass-approvals-and-sandbox",
+    );
   });
 
   it("buildPrintCommand shell-escapes the prompt", () => {
-    const provider = claudeCode("claude-opus-4-6");
+    const provider = codex("gpt-5.3-codex");
     const command = provider.buildPrintCommand("it's a test");
     // Single-quoted shell escaping: ' -> '\''
     expect(command).toContain("'it'\\''s a test'");
   });
 
   it("buildPrintCommand shell-escapes the model", () => {
-    const provider = claudeCode("claude-opus-4-6");
+    const provider = codex("gpt-5.3-codex");
     const command = provider.buildPrintCommand("do something");
-    expect(command).toContain("--model 'claude-opus-4-6'");
+    expect(command).toContain("--model 'gpt-5.3-codex'");
   });
 
   it("buildInteractiveArgs includes the binary and model", () => {
-    const provider = claudeCode("claude-sonnet-4-6");
+    const provider = codex("gpt-5.4");
     const args = provider.buildInteractiveArgs("");
-    expect(args[0]).toBe("claude");
-    expect(args).toContain("claude-sonnet-4-6");
+    expect(args[0]).toBe("codex");
+    expect(args).toContain("gpt-5.4");
     expect(args).toContain("--model");
   });
 
-  it("parseStreamLine extracts text from assistant message", () => {
-    const provider = claudeCode("claude-opus-4-6");
+  it("parseStreamLine extracts text from agent_message", () => {
+    const provider = codex("gpt-5.3-codex");
     const line = JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: "Hello world" }] },
+      type: "agent_message",
+      message: "Hello world",
     });
     expect(provider.parseStreamLine(line)).toEqual([
       { type: "text", text: "Hello world" },
     ]);
   });
 
-  it("parseStreamLine extracts result from result message", () => {
-    const provider = claudeCode("claude-opus-4-6");
+  it("parseStreamLine extracts result from task_complete", () => {
+    const provider = codex("gpt-5.3-codex");
     const line = JSON.stringify({
-      type: "result",
-      result: "Final answer <promise>COMPLETE</promise>",
+      type: "task_complete",
+      last_agent_message: "Final answer <promise>COMPLETE</promise>",
     });
     expect(provider.parseStreamLine(line)).toEqual([
       {
@@ -69,29 +72,66 @@ describe("claudeCode factory", () => {
   });
 
   it("parseStreamLine returns empty array for non-JSON lines", () => {
-    const provider = claudeCode("claude-opus-4-6");
+    const provider = codex("gpt-5.3-codex");
     expect(provider.parseStreamLine("not json")).toEqual([]);
     expect(provider.parseStreamLine("")).toEqual([]);
   });
 
-  it("parseStreamLine extracts tool_use block (Bash → command arg)", () => {
-    const provider = claudeCode("claude-opus-4-6");
+  it("parseStreamLine extracts exec_command_begin as a Bash tool call", () => {
+    const provider = codex("gpt-5.3-codex");
     const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
-        ],
-      },
+      type: "exec_command_begin",
+      command: "npm test",
     });
     expect(provider.parseStreamLine(line)).toEqual([
       { type: "tool_call", name: "Bash", args: "npm test" },
     ]);
   });
 
+  it("parseStreamLine extracts agent_message_delta", () => {
+    const provider = codex("gpt-5.3-codex");
+    const line = JSON.stringify({
+      type: "agent_message_delta",
+      delta: "Thinking...",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "text", text: "Thinking..." },
+    ]);
+  });
+
+  it("parseStreamLine extracts usage from task_complete", () => {
+    const provider = codex("gpt-5.3-codex");
+    const line = JSON.stringify({
+      type: "task_complete",
+      last_agent_message: "Done",
+      num_turns: 3,
+      duration_ms: 12000,
+      last_token_usage: {
+        input_tokens: 52340,
+        output_tokens: 3201,
+        cached_input_tokens: 10000,
+      },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Done",
+        usage: {
+          input_tokens: 52340,
+          output_tokens: 3201,
+          cache_read_input_tokens: 10000,
+          cache_creation_input_tokens: 0,
+          total_cost_usd: 0,
+          num_turns: 3,
+          duration_ms: 12000,
+        },
+      },
+    ]);
+  });
+
   it("parseStreamLine bakes model into each provider instance independently", () => {
-    const provider1 = claudeCode("model-a");
-    const provider2 = claudeCode("model-b");
+    const provider1 = codex("model-a");
+    const provider2 = codex("model-b");
     expect(provider1.buildPrintCommand("test")).toContain("model-a");
     expect(provider2.buildPrintCommand("test")).toContain("model-b");
     expect(provider1.buildPrintCommand("test")).not.toContain("model-b");

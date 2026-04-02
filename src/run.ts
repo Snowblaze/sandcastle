@@ -152,7 +152,7 @@ export type WorktreeMode =
   | { readonly mode: "branch"; readonly branch: string };
 
 export interface RunOptions {
-  /** Agent provider to use (e.g. claudeCode("claude-opus-4-6")) */
+  /** Agent provider to use (e.g. codex("gpt-5.3-codex")) */
   readonly agent: AgentProvider;
   /** Inline prompt string (mutually exclusive with promptFile) */
   readonly prompt?: string;

@@ -59,7 +59,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     copyToSandbox,
     name: "implementer",
     maxIterations: 100,
-    agent: sandcastle.claudeCode("claude-sonnet-4-6"),
+    agent: sandcastle.codex("gpt-5.3-codex"),
     promptFile: "./.sandcastle/implement-prompt.md",
   });
 
@@ -86,7 +86,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     copyToSandbox,
     name: "reviewer",
     maxIterations: 10,
-    agent: sandcastle.claudeCode("claude-sonnet-4-6"),
+    agent: sandcastle.codex("gpt-5.3-codex"),
     promptFile: "./.sandcastle/review-prompt.md",
     // Prompt arguments substitute {{BRANCH}} in review-prompt.md before the
     // agent sees the prompt.

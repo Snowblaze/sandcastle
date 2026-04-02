@@ -15,14 +15,15 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   && apt-get update && apt-get install -y gh \
   && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for Claude to run as
+# Create a non-root user for Codex to run as
 RUN useradd -m -s /bin/bash agent
 USER agent
 
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Codex CLI
+RUN npm config set prefix /home/agent/.local \
+  && npm install -g @openai/codex
 
-# Add Claude to PATH
+# Add global npm binaries to PATH
 ENV PATH="/home/agent/.local/bin:$PATH"
 
 WORKDIR /home/agent

@@ -1,4 +1,4 @@
-import { run, claudeCode } from "@ai-hero/sandcastle";
+import { run, codex } from "@ai-hero/sandcastle";
 
 // Simple loop: an agent that picks open GitHub issues one by one and closes them.
 // Run this with: npx tsx .sandcastle/main.ts
@@ -8,10 +8,10 @@ await run({
   // A name for this run, shown as a prefix in log output.
   name: "worker",
 
-  // The agent provider. Pass a model string to claudeCode() — sonnet balances
-  // capability and speed for most tasks. Switch to claude-opus-4-6 for harder
-  // problems, or claude-haiku-4-5-20251001 for speed.
-  agent: claudeCode("claude-sonnet-4-6"),
+  // The agent provider. Pass a model string to codex() — `gpt-5.3-codex`
+  // is a solid default for coding workflows. Switch to `gpt-5.4` for harder
+  // problems, or `gpt-5.1-codex-mini` for a cheaper, faster option.
+  agent: codex("gpt-5.3-codex"),
 
   // Path to the prompt file. Shell expressions inside are evaluated inside the
   // sandbox at the start of each iteration, so the agent always sees fresh data.

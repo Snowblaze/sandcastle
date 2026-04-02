@@ -17,12 +17,12 @@ import { SKELETON_PROMPT } from "./templates.js";
 
 const makeDir = () => mkdtemp(join(tmpdir(), "init-service-"));
 
-const claudeCodeAgent = getAgent("claude-code")!;
+const codexAgent = getAgent("codex")!;
 const piAgent = getAgent("pi")!;
 
 const defaultOptions: ScaffoldOptions = {
-  agent: claudeCodeAgent,
-  model: "claude-opus-4-6",
+  agent: codexAgent,
+  model: "gpt-5.3-codex",
 };
 
 const runScaffold = (repoDir: string, options?: Partial<ScaffoldOptions>) =>
@@ -37,17 +37,17 @@ const runScaffold = (repoDir: string, options?: Partial<ScaffoldOptions>) =>
 // ---------------------------------------------------------------------------
 
 describe("Agent registry", () => {
-  it("listAgents returns at least claude-code", () => {
+  it("listAgents returns at least codex", () => {
     const agents = listAgents();
-    expect(agents.some((a) => a.name === "claude-code")).toBe(true);
+    expect(agents.some((a) => a.name === "codex")).toBe(true);
   });
 
-  it("getAgent returns claude-code entry with expected fields", () => {
-    const agent = getAgent("claude-code");
+  it("getAgent returns codex entry with expected fields", () => {
+    const agent = getAgent("codex");
     expect(agent).toBeDefined();
-    expect(agent!.name).toBe("claude-code");
-    expect(agent!.defaultModel).toBe("claude-opus-4-6");
-    expect(agent!.factoryImport).toBe("claudeCode");
+    expect(agent!.name).toBe("codex");
+    expect(agent!.defaultModel).toBe("gpt-5.3-codex");
+    expect(agent!.factoryImport).toBe("codex");
     expect(agent!.dockerfileTemplate).toContain("FROM");
   });
 
@@ -86,7 +86,7 @@ describe("InitService scaffold", () => {
       join(dir, ".sandcastle", "Dockerfile"),
       "utf-8",
     );
-    expect(dockerfile).toBe(claudeCodeAgent.dockerfileTemplate);
+    expect(dockerfile).toBe(codexAgent.dockerfileTemplate);
   });
 
   it("copies .env.example from template directory", async () => {
@@ -97,7 +97,7 @@ describe("InitService scaffold", () => {
       join(dir, ".sandcastle", ".env.example"),
       "utf-8",
     );
-    expect(envExample).toContain("ANTHROPIC_API_KEY=");
+    expect(envExample).toContain("OPENAI_API_KEY=");
     expect(envExample).toContain("GH_TOKEN=");
   });
 
@@ -146,7 +146,7 @@ describe("InitService scaffold", () => {
     expect(dockerfile).toContain(SANDBOX_WORKSPACE_DIR);
   });
 
-  it("claude-code Dockerfile template does not install pnpm or enable corepack", async () => {
+  it("codex Dockerfile template does not install pnpm or enable corepack", async () => {
     const dir = await makeDir();
     await runScaffold(dir);
 
@@ -221,12 +221,12 @@ describe("InitService scaffold", () => {
 
   it("scaffolds main.ts with the specified model", async () => {
     const dir = await makeDir();
-    await runScaffold(dir, { model: "claude-sonnet-4-6" });
+    await runScaffold(dir, { model: "gpt-5.4" });
 
     const mainTs = await readFile(join(dir, ".sandcastle", "main.ts"), "utf-8");
-    expect(mainTs).toContain('claudeCode("claude-sonnet-4-6")');
+    expect(mainTs).toContain('codex("gpt-5.4")');
     // Should not contain the template's original model
-    expect(mainTs).not.toContain('claudeCode("claude-opus-4-6")');
+    expect(mainTs).not.toContain('codex("gpt-5.3-codex")');
   });
 
   it("scaffolds main.ts with default model when using agent default", async () => {
@@ -234,7 +234,7 @@ describe("InitService scaffold", () => {
     await runScaffold(dir);
 
     const mainTs = await readFile(join(dir, ".sandcastle", "main.ts"), "utf-8");
-    expect(mainTs).toContain('claudeCode("claude-opus-4-6")');
+    expect(mainTs).toContain('codex("gpt-5.3-codex")');
   });
 
   // --- Template-specific tests ---
@@ -266,8 +266,8 @@ describe("InitService scaffold", () => {
     expect(mainTs).toContain("run(");
     expect(mainTs).toContain("maxIterations");
     expect(mainTs).toContain("3");
-    // When scaffolded with default model, simple-loop uses claude-opus-4-6
-    // (rewritten from template's claude-sonnet-4-6)
+    // When scaffolded with the agent default, simple-loop uses gpt-5.3-codex
+    // (rewritten from the template's placeholder value if needed)
     expect(mainTs).toContain("promptFile");
     expect(mainTs).toContain("npm install");
     expect(mainTs).toContain("onSandboxReady");
@@ -478,7 +478,7 @@ describe("InitService scaffold", () => {
 
     const mainTs = await readFile(join(dir, ".sandcastle", "main.ts"), "utf-8");
     expect(mainTs).toContain('pi("claude-sonnet-4-6")');
-    expect(mainTs).not.toContain("claudeCode");
+    expect(mainTs).not.toContain("codex");
   });
 
   it("unknown template name throws a clear error", async () => {
@@ -539,8 +539,8 @@ describe("InitService scaffold", () => {
         join(dir, ".sandcastle", "main.ts"),
         "utf-8",
       );
-      // All factory calls should use the specified model (default: claude-opus-4-6)
-      expect(mainTs).toContain("claude-opus-4-6");
+      // All factory calls should use the specified model (default: gpt-5.3-codex)
+      expect(mainTs).toContain("gpt-5.3-codex");
     });
 
     it("implement-prompt.md contains {{ISSUE_NUMBER}}, {{ISSUE_TITLE}}, {{BRANCH}} prompt arguments", async () => {
@@ -585,13 +585,13 @@ describe("InitService scaffold", () => {
 
       const configDir = join(dir, ".sandcastle");
       const dockerfile = await readFile(join(configDir, "Dockerfile"), "utf-8");
-      expect(dockerfile).toBe(claudeCodeAgent.dockerfileTemplate);
+      expect(dockerfile).toBe(codexAgent.dockerfileTemplate);
 
       const envExample = await readFile(
         join(configDir, ".env.example"),
         "utf-8",
       );
-      expect(envExample).toContain("ANTHROPIC_API_KEY=");
+      expect(envExample).toContain("OPENAI_API_KEY=");
     });
   });
 });

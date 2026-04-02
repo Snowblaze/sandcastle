@@ -17,7 +17,7 @@ import {
 } from "./InitService.js";
 import { defaultImageName } from "./run.js";
 import {
-  claudeCode,
+  codex,
   pi as piFactory,
   DEFAULT_MODEL,
   type AgentProvider,
@@ -76,13 +76,13 @@ const templateOption = Options.text("template").pipe(
 );
 
 const agentOption = Options.text("agent").pipe(
-  Options.withDescription("Agent to use (e.g. claude-code)"),
+  Options.withDescription("Agent to use (e.g. codex)"),
   Options.optional,
 );
 
 const initModelOption = Options.text("model").pipe(
   Options.withDescription(
-    "Model to use for the agent (e.g. claude-sonnet-4-6). Defaults to the agent's default model",
+    "Model to use for the agent (e.g. gpt-5.3-codex). Defaults to the agent's default model",
   ),
   Options.optional,
 );
@@ -124,7 +124,7 @@ const initCommand = Command.make(
         const selected = yield* Effect.promise(() =>
           clack.select({
             message: "Select an agent:",
-            initialValue: "claude-code",
+            initialValue: "codex",
             options: agents.map((a) => ({
               value: a.name,
               label: a.label,
@@ -313,7 +313,7 @@ const AGENT_REGISTRY: Record<
   string,
   { factory: (model: string) => AgentProvider; defaultModel: string }
 > = {
-  "claude-code": { factory: claudeCode, defaultModel: DEFAULT_MODEL },
+  codex: { factory: codex, defaultModel: DEFAULT_MODEL },
   pi: { factory: piFactory, defaultModel: "claude-sonnet-4-6" },
 };
 
@@ -321,13 +321,11 @@ const interactiveAgentOption = Options.text("agent").pipe(
   Options.withDescription(
     `Agent provider to use (${Object.keys(AGENT_REGISTRY).join(", ")})`,
   ),
-  Options.withDefault("claude-code"),
+  Options.withDefault("codex"),
 );
 
 const modelOption = Options.text("model").pipe(
-  Options.withDescription(
-    "Model to use for the agent (e.g. claude-sonnet-4-6)",
-  ),
+  Options.withDescription("Model to use for the agent (e.g. gpt-5.3-codex)"),
   Options.optional,
 );
 

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { Display, type DisplayEntry, SilentDisplay } from "./Display.js";
 import { makeLocalSandboxLayer } from "./testSandbox.js";
 import { orchestrate } from "./Orchestrator.js";
-import { claudeCode, pi as piFactory, DEFAULT_MODEL } from "./AgentProvider.js";
+import { codex, pi as piFactory, DEFAULT_MODEL } from "./AgentProvider.js";
 import { Sandbox } from "./SandboxFactory.js";
 import type { DockerError, SandboxError } from "./errors.js";
 import { TimeoutError } from "./errors.js";
@@ -18,7 +18,7 @@ import { SandboxFactory } from "./SandboxFactory.js";
 
 const execAsync = promisify(exec);
 
-const testProvider = claudeCode("test-model");
+const testProvider = codex("test-model");
 
 const testDisplayLayer = SilentDisplay.layer(
   Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([]),
@@ -46,16 +46,11 @@ const getHead = async (dir: string) => {
   return stdout.trim();
 };
 
-/** Format a mock agent result as stream-json lines (mimicking Claude's output) */
+/** Format a mock agent result as JSON lines (mimicking Codex exec output) */
 const toStreamJson = (output: string): string => {
   const lines: string[] = [];
-  lines.push(
-    JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: output }] },
-    }),
-  );
-  lines.push(JSON.stringify({ type: "result", result: output }));
+  lines.push(JSON.stringify({ type: "agent_message", message: output }));
+  lines.push(JSON.stringify({ type: "task_complete", last_agent_message: output }));
   return lines.join("\n");
 };
 
@@ -124,7 +119,7 @@ const makeTestSandboxFactory = (
 };
 
 /**
- * Create a mock sandbox layer that intercepts `claude` commands
+ * Create a mock sandbox layer that intercepts `codex exec` commands
  * and runs a mock script instead. All other commands pass through
  * to the filesystem sandbox.
  */
@@ -136,8 +131,8 @@ const makeMockAgentLayer = (
 
   return Layer.succeed(Sandbox, {
     exec: (command, options) => {
-      // Intercept claude invocations
-      if (command.startsWith("claude ")) {
+      // Intercept codex exec invocations
+      if (command.startsWith("codex exec ")) {
         return Effect.gen(function* () {
           const cwd = options?.cwd ?? sandboxDir;
           const output = yield* Effect.promise(() => mockAgentBehavior(cwd));
@@ -150,8 +145,8 @@ const makeMockAgentLayer = (
       ).pipe(Effect.provide(fsLayer));
     },
     execStreaming: (command, onStdoutLine, options) => {
-      // Intercept claude invocations
-      if (command.startsWith("claude ")) {
+      // Intercept codex exec invocations
+      if (command.startsWith("codex exec ")) {
         return Effect.gen(function* () {
           const cwd = options?.cwd ?? sandboxDir;
           const output = yield* Effect.promise(() => mockAgentBehavior(cwd));
@@ -791,23 +786,33 @@ describe("OrchestrateResult", () => {
   });
 });
 
-describe("parseStreamLine (via claudeCode provider)", () => {
-  it("extracts text from assistant message", () => {
+describe("parseStreamLine (via codex provider)", () => {
+  it("extracts text from agent_message", () => {
     const line = JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: "Hello world" }] },
+      type: "agent_message",
+      message: "Hello world",
     });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
+    expect(codex("test-model").parseStreamLine(line)).toEqual([
       { type: "text", text: "Hello world" },
     ]);
   });
 
-  it("extracts result from result message", () => {
+  it("extracts text from agent_message_delta", () => {
     const line = JSON.stringify({
-      type: "result",
-      result: "Final answer <promise>COMPLETE</promise>",
+      type: "agent_message_delta",
+      delta: "Thinking...",
     });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
+    expect(codex("test-model").parseStreamLine(line)).toEqual([
+      { type: "text", text: "Thinking..." },
+    ]);
+  });
+
+  it("extracts result from task_complete", () => {
+    const line = JSON.stringify({
+      type: "task_complete",
+      last_agent_message: "Final answer <promise>COMPLETE</promise>",
+    });
+    expect(codex("test-model").parseStreamLine(line)).toEqual([
       {
         type: "result",
         result: "Final answer <promise>COMPLETE</promise>",
@@ -816,213 +821,29 @@ describe("parseStreamLine (via claudeCode provider)", () => {
     ]);
   });
 
-  it("returns empty array for non-JSON lines", () => {
-    expect(claudeCode("test-model").parseStreamLine("not json")).toEqual([]);
-    expect(claudeCode("test-model").parseStreamLine("")).toEqual([]);
-  });
-
-  it("returns empty array for malformed JSON starting with {", () => {
-    expect(claudeCode("test-model").parseStreamLine("{bad json")).toEqual([]);
-    expect(
-      claudeCode("test-model").parseStreamLine('{"type": "assistant", broken'),
-    ).toEqual([]);
-  });
-
-  it("returns empty array for unrecognized JSON types", () => {
-    const line = JSON.stringify({ type: "system", data: "something" });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([]);
-  });
-
-  it("handles multiple text content blocks", () => {
+  it("extracts exec_command_begin as a Bash tool call", () => {
     const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "text", text: "Hello " },
-          { type: "text", text: "world" },
-        ],
-      },
+      type: "exec_command_begin",
+      command: "npm test",
     });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "text", text: "Hello world" },
-    ]);
-  });
-
-  it("skips malformed tool_use blocks (no name/input)", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "tool_use", id: "123" },
-          { type: "text", text: "result" },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "text", text: "result" },
-    ]);
-  });
-
-  it("extracts tool_use block from assistant event (Bash → command arg)", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
+    expect(codex("test-model").parseStreamLine(line)).toEqual([
       { type: "tool_call", name: "Bash", args: "npm test" },
     ]);
   });
 
-  it("handles mixed text and tool_use content blocks", () => {
+  it("extracts usage from task_complete", () => {
     const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "text", text: "Running tests..." },
-          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "text", text: "Running tests..." },
-      { type: "tool_call", name: "Bash", args: "npm test" },
-    ]);
-  });
-
-  it("handles multiple tool_use blocks in one event", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
-          {
-            type: "tool_use",
-            name: "WebSearch",
-            input: { query: "typescript types" },
-          },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "tool_call", name: "Bash", args: "npm test" },
-      { type: "tool_call", name: "WebSearch", args: "typescript types" },
-    ]);
-  });
-
-  it("extracts WebFetch tool_use with url arg", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          {
-            type: "tool_use",
-            name: "WebFetch",
-            input: { url: "https://example.com" },
-          },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "tool_call", name: "WebFetch", args: "https://example.com" },
-    ]);
-  });
-
-  it("extracts Agent tool_use with description arg", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          {
-            type: "tool_use",
-            name: "Agent",
-            input: { description: "Run tests and report results" },
-          },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      {
-        type: "tool_call",
-        name: "Agent",
-        args: "Run tests and report results",
-      },
-    ]);
-  });
-
-  it("filters out non-allowlisted tools (Read, Glob, Grep, Edit, Write)", () => {
-    for (const name of ["Read", "Glob", "Grep", "Edit", "Write"]) {
-      const line = JSON.stringify({
-        type: "assistant",
-        message: {
-          content: [
-            { type: "tool_use", name, input: { file_path: "/some/file" } },
-          ],
-        },
-      });
-      expect(claudeCode("test-model").parseStreamLine(line)).toEqual([]);
-    }
-  });
-
-  it("filters out tool_use blocks with missing expected input field", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          // Bash with no `command` field
-          { type: "tool_use", name: "Bash", input: { other: "value" } },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([]);
-  });
-
-  it("keeps text events even when all tool_use blocks are filtered out", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "text", text: "Looking at files..." },
-          { type: "tool_use", name: "Read", input: { file_path: "/foo" } },
-        ],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "text", text: "Looking at files..." },
-    ]);
-  });
-
-  it("returns only text when event has no tool_use blocks", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [{ type: "text", text: "Just text, no tools" }],
-      },
-    });
-    expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
-      { type: "text", text: "Just text, no tools" },
-    ]);
-  });
-
-  it("extracts usage data from result message", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-      total_cost_usd: 0.14,
+      type: "task_complete",
+      last_agent_message: "Done.",
       num_turns: 3,
       duration_ms: 12000,
-      usage: {
+      last_token_usage: {
         input_tokens: 52340,
         output_tokens: 3201,
-        cache_read_input_tokens: 10000,
-        cache_creation_input_tokens: 5000,
+        cached_input_tokens: 10000,
       },
     });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
+    expect(codex("test-model").parseStreamLine(line)).toEqual([
       {
         type: "result",
         result: "Done.",
@@ -1030,8 +851,8 @@ describe("parseStreamLine (via claudeCode provider)", () => {
           input_tokens: 52340,
           output_tokens: 3201,
           cache_read_input_tokens: 10000,
-          cache_creation_input_tokens: 5000,
-          total_cost_usd: 0.14,
+          cache_creation_input_tokens: 0,
+          total_cost_usd: 0,
           num_turns: 3,
           duration_ms: 12000,
         },
@@ -1039,35 +860,15 @@ describe("parseStreamLine (via claudeCode provider)", () => {
     ]);
   });
 
-  it("returns null usage when result message has no usage data", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-    });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
-      {
-        type: "result",
-        result: "Done.",
-        usage: null,
-      },
-    ]);
+  it("returns empty array for non-JSON or malformed JSON lines", () => {
+    expect(codex("test-model").parseStreamLine("not json")).toEqual([]);
+    expect(codex("test-model").parseStreamLine("")).toEqual([]);
+    expect(codex("test-model").parseStreamLine("{bad json")).toEqual([]);
   });
 
-  it("returns null usage when usage fields are partial", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-      usage: { input_tokens: 100 },
-    });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
-      {
-        type: "result",
-        result: "Done.",
-        usage: null,
-      },
-    ]);
+  it("returns empty array for unrecognized JSON types", () => {
+    const line = JSON.stringify({ type: "system", data: "something" });
+    expect(codex("test-model").parseStreamLine(line)).toEqual([]);
   });
 });
 
@@ -1088,35 +889,14 @@ describe("Orchestrator tool call display integration", () => {
             Effect.provide(fsLayer),
           ),
         execStreaming: (command, onStdoutLine, options) => {
-          if (command.startsWith("claude ")) {
+          if (command.startsWith("codex exec ")) {
             const lines = [
+              JSON.stringify({ type: "agent_message", message: "Running tests..." }),
+              JSON.stringify({ type: "exec_command_begin", command: "npm test" }),
+              JSON.stringify({ type: "web_search_begin", query: "effect-ts docs" }),
               JSON.stringify({
-                type: "assistant",
-                message: {
-                  content: [
-                    { type: "text", text: "Running tests..." },
-                    {
-                      type: "tool_use",
-                      name: "Bash",
-                      input: { command: "npm test" },
-                    },
-                    {
-                      type: "tool_use",
-                      name: "WebSearch",
-                      input: { query: "effect-ts docs" },
-                    },
-                    // Read should be filtered out
-                    {
-                      type: "tool_use",
-                      name: "Read",
-                      input: { file_path: "/src/foo.ts" },
-                    },
-                  ],
-                },
-              }),
-              JSON.stringify({
-                type: "result",
-                result: "<promise>COMPLETE</promise>",
+                type: "task_complete",
+                last_agent_message: "<promise>COMPLETE</promise>",
               }),
             ];
             for (const line of lines) onStdoutLine(line);
@@ -1192,7 +972,7 @@ describe("Orchestrator error handling", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               return Effect.succeed({
                 stdout: "",
                 stderr: "Agent crashed",
@@ -1235,7 +1015,7 @@ describe("Orchestrator error handling", () => {
     await initRepo(hostDir);
     await commitFile(hostDir, "hello.txt", "hello", "initial commit");
 
-    // Layer where agent stream emits only assistant lines, no result line.
+    // Layer where agent stream emits only text lines, no completion line.
     // stdout contains the completion signal so the fallback path picks it up.
     const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
       hostDir,
@@ -1247,11 +1027,11 @@ describe("Orchestrator error handling", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
-              // Only emit an assistant line, no result line
+            if (command.startsWith("codex exec ")) {
+              // Only emit a text line, no task_complete line.
               const assistantLine = JSON.stringify({
-                type: "assistant",
-                message: { content: [{ type: "text", text: "working..." }] },
+                type: "agent_message",
+                message: "working...",
               });
               onStdoutLine(assistantLine);
               return Effect.succeed({
@@ -1311,7 +1091,7 @@ describe("Orchestrator error handling", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               callCount++;
               if (callCount === 1) {
                 // Iteration 1: make a commit
@@ -1454,7 +1234,7 @@ describe("Orchestrator error handling", () => {
 });
 
 describe("Orchestrator streaming", () => {
-  it("invokes claude with stream-json and verbose flags", async () => {
+  it("invokes codex exec with JSON output", async () => {
     const hostDir = await mkdtemp(join(tmpdir(), "orch-stream-host-"));
 
     await initRepo(hostDir);
@@ -1472,7 +1252,7 @@ describe("Orchestrator streaming", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               capturedCommand = command;
               const output = "Test output";
               const streamOutput = toStreamJson(output);
@@ -1512,18 +1292,20 @@ describe("Orchestrator streaming", () => {
       }).pipe(Effect.provide(Layer.merge(factoryLayer, testDisplayLayer))),
     );
 
-    expect(capturedCommand).toContain("--output-format stream-json");
-    expect(capturedCommand).toContain("--verbose");
-    expect(capturedCommand).not.toContain("--output-format text");
+    expect(capturedCommand).toContain("codex exec");
+    expect(capturedCommand).toContain("--json");
+    expect(capturedCommand).toContain(
+      "--dangerously-bypass-approvals-and-sandbox",
+    );
   });
 
-  it("extracts completion signal from stream-json result line", async () => {
+  it("extracts completion signal from JSON result line", async () => {
     const hostDir = await mkdtemp(join(tmpdir(), "orch-result-host-"));
 
     await initRepo(hostDir);
     await commitFile(hostDir, "hello.txt", "hello", "initial commit");
 
-    // Mock agent that emits completion via stream-json result type
+    // Mock agent that emits completion via JSON result type
     const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
       hostDir,
       (dir) =>
@@ -1565,7 +1347,7 @@ describe("Orchestrator streaming", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               capturedCommand = command;
               const output = "Done.";
               const streamOutput = toStreamJson(output);
@@ -1596,7 +1378,7 @@ describe("Orchestrator streaming", () => {
 
     await Effect.runPromise(
       orchestrate({
-        provider: claudeCode(DEFAULT_MODEL),
+        provider: codex(DEFAULT_MODEL),
         hostRepoDir: hostDir,
         sandboxRepoDir,
         iterations: 1,
@@ -1625,7 +1407,7 @@ describe("Orchestrator streaming", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               capturedCommand = command;
               const output = "Done.";
               const streamOutput = toStreamJson(output);
@@ -1656,7 +1438,7 @@ describe("Orchestrator streaming", () => {
 
     await Effect.runPromise(
       orchestrate({
-        provider: claudeCode("claude-sonnet-4-6"),
+        provider: codex("gpt-5.4"),
         hostRepoDir: hostDir,
         sandboxRepoDir,
         iterations: 1,
@@ -1664,7 +1446,7 @@ describe("Orchestrator streaming", () => {
       }).pipe(Effect.provide(Layer.merge(factoryLayer, testDisplayLayer))),
     );
 
-    expect(capturedCommand).toContain("--model 'claude-sonnet-4-6'");
+    expect(capturedCommand).toContain("--model 'gpt-5.4'");
     expect(capturedCommand).not.toContain(DEFAULT_MODEL);
   });
 });
@@ -1688,8 +1470,8 @@ describe("Orchestrator prompt preprocessing", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
-              // Capture the prompt passed to claude
+            if (command.startsWith("codex exec ")) {
+              // Capture the prompt passed to codex exec
               capturedPrompt = command;
               const output = "Done.";
               const streamOutput = toStreamJson(output);
@@ -1760,7 +1542,7 @@ describe("Orchestrator prompt preprocessing", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               capturedPrompt = command;
               const output = "Done.";
               const streamOutput = toStreamJson(output);
@@ -1830,24 +1612,22 @@ describe("Orchestrator Display integration", () => {
             Effect.provide(fsLayer),
           ),
         execStreaming: (command, onStdoutLine, options) => {
-          if (command.startsWith("claude ")) {
+          if (command.startsWith("codex exec ")) {
             const output = "All done. <promise>COMPLETE</promise>";
             const lines = [
               JSON.stringify({
-                type: "assistant",
-                message: { content: [{ type: "text", text: output }] },
+                type: "agent_message",
+                message: output,
               }),
               JSON.stringify({
-                type: "result",
-                result: output,
-                total_cost_usd: 0.14,
+                type: "task_complete",
+                last_agent_message: output,
                 num_turns: 3,
                 duration_ms: 12000,
-                usage: {
+                last_token_usage: {
                   input_tokens: 52340,
                   output_tokens: 3201,
-                  cache_read_input_tokens: 10000,
-                  cache_creation_input_tokens: 5000,
+                  cached_input_tokens: 10000,
                 },
               }),
             ];
@@ -2141,7 +1921,7 @@ describe("Orchestrator Display integration", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               return Effect.gen(function* () {
                 // Wait 100ms then emit a text event (resets idle timer)
                 yield* Effect.promise(
@@ -2149,10 +1929,8 @@ describe("Orchestrator Display integration", () => {
                 );
                 onStdoutLine(
                   JSON.stringify({
-                    type: "assistant",
-                    message: {
-                      content: [{ type: "text", text: "working..." }],
-                    },
+                    type: "agent_message",
+                    message: "working...",
                   }),
                 );
                 // Wait another 100ms then emit the result
@@ -2160,7 +1938,10 @@ describe("Orchestrator Display integration", () => {
                   () => new Promise((resolve) => setTimeout(resolve, 100)),
                 );
                 onStdoutLine(
-                  JSON.stringify({ type: "result", result: "done" }),
+                  JSON.stringify({
+                    type: "task_complete",
+                    last_agent_message: "done",
+                  }),
                 );
                 return { stdout: "", stderr: "", exitCode: 0 };
               });
@@ -2217,14 +1998,17 @@ describe("Orchestrator Display integration", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               return Effect.gen(function* () {
                 // Stay idle for 250ms — enough for ~2 warnings at 100ms interval
                 yield* Effect.promise(
                   () => new Promise((resolve) => setTimeout(resolve, 250)),
                 );
                 onStdoutLine(
-                  JSON.stringify({ type: "result", result: "done" }),
+                  JSON.stringify({
+                    type: "task_complete",
+                    last_agent_message: "done",
+                  }),
                 );
                 return { stdout: "", stderr: "", exitCode: 0 };
               });
@@ -2300,7 +2084,7 @@ describe("Orchestrator Display integration", () => {
               Effect.provide(fsLayer),
             ),
           execStreaming: (command, onStdoutLine, options) => {
-            if (command.startsWith("claude ")) {
+            if (command.startsWith("codex exec ")) {
               return Effect.gen(function* () {
                 // Idle for 150ms — warning fires at ~100ms
                 yield* Effect.promise(
@@ -2309,10 +2093,8 @@ describe("Orchestrator Display integration", () => {
                 // Emit text — should reset the warning counter
                 onStdoutLine(
                   JSON.stringify({
-                    type: "assistant",
-                    message: {
-                      content: [{ type: "text", text: "working..." }],
-                    },
+                    type: "agent_message",
+                    message: "working...",
                   }),
                 );
                 // Idle for another 150ms — warning fires at ~100ms after reset
@@ -2320,7 +2102,10 @@ describe("Orchestrator Display integration", () => {
                   () => new Promise((resolve) => setTimeout(resolve, 150)),
                 );
                 onStdoutLine(
-                  JSON.stringify({ type: "result", result: "done" }),
+                  JSON.stringify({
+                    type: "task_complete",
+                    last_agent_message: "done",
+                  }),
                 );
                 return { stdout: "", stderr: "", exitCode: 0 };
               });
@@ -2382,7 +2167,7 @@ describe("Orchestrator Display integration", () => {
 // Pi provider integration tests
 // ---------------------------------------------------------------------------
 
-const piTestProvider = piFactory("claude-sonnet-4-6");
+const piTestProvider = piFactory("gpt-5.4");
 
 /** Format a mock agent result as pi JSON stream lines */
 const toPiStreamJson = (output: string): string => {

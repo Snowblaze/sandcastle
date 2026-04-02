@@ -35,7 +35,7 @@ npm install @ai-hero/sandcastle
 npx sandcastle init
 ```
 
-3. Edit `.sandcastle/.env` and fill in your default values for `ANTHROPIC_API_KEY`
+3. Edit `.sandcastle/.env` and fill in your default values for `OPENAI_API_KEY`
 
 ```bash
 cp .sandcastle/.env.example .sandcastle/.env
@@ -49,10 +49,10 @@ npx tsx .sandcastle/main.ts
 
 ```typescript
 // 3. Run the agent via the JS API
-import { run, claudeCode } from "@ai-hero/sandcastle";
+import { run, codex } from "@ai-hero/sandcastle";
 
 await run({
-  agent: claudeCode("claude-opus-4-6"),
+  agent: codex("gpt-5.3-codex"),
   promptFile: ".sandcastle/prompt.md",
 });
 ```
@@ -62,10 +62,10 @@ await run({
 Sandcastle exports a programmatic `run()` function for use in scripts, CI pipelines, or custom tooling.
 
 ```typescript
-import { run, claudeCode } from "@ai-hero/sandcastle";
+import { run, codex } from "@ai-hero/sandcastle";
 
 const result = await run({
-  agent: claudeCode("claude-opus-4-6"),
+  agent: codex("gpt-5.3-codex"),
   promptFile: ".sandcastle/prompt.md",
 });
 
@@ -77,11 +77,11 @@ console.log(result.branch); // target branch name
 ### All options
 
 ```typescript
-import { run, claudeCode } from "@ai-hero/sandcastle";
+import { run, codex } from "@ai-hero/sandcastle";
 
 const result = await run({
-  // Agent provider — required. Pass a model string to claudeCode().
-  agent: claudeCode("claude-opus-4-6"),
+  // Agent provider — required. Pass a model string to codex().
+  agent: codex("gpt-5.3-codex"),
 
   // Prompt source — provide one of these, not both:
   promptFile: ".sandcastle/prompt.md", // path to a prompt file
@@ -267,8 +267,8 @@ Scaffolds the `.sandcastle/` config directory and builds the Docker image. This 
 | Option         | Required | Default                      | Description                                                          |
 | -------------- | -------- | ---------------------------- | -------------------------------------------------------------------- |
 | `--image-name` | No       | `sandcastle:<repo-dir-name>` | Docker image name                                                    |
-| `--agent`      | No       | Interactive prompt           | Agent to use (`claude-code`, `pi`)                                   |
-| `--model`      | No       | Agent's default model        | Model to use (e.g. `claude-sonnet-4-6`). Defaults to agent's default |
+| `--agent`      | No       | Interactive prompt           | Agent to use (`codex`, `pi`)                                        |
+| `--model`      | No       | Agent's default model        | Model to use (e.g. `gpt-5.3-codex`). Defaults to agent's default     |
 | `--template`   | No       | Interactive prompt           | Template to scaffold (e.g. `blank`, `simple-loop`)                   |
 
 Creates the following files:
@@ -304,7 +304,7 @@ Removes the Docker image.
 
 | Option               | Type               | Default                       | Description                                                                                         |
 | -------------------- | ------------------ | ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| `agent`              | AgentProvider      | —                             | **Required.** Agent provider (e.g. `claudeCode("claude-opus-4-6")`, `pi("claude-sonnet-4-6")`)      |
+| `agent`              | AgentProvider      | —                             | **Required.** Agent provider (e.g. `codex("gpt-5.3-codex")`, `pi("claude-sonnet-4-6")`) |
 | `prompt`             | string             | —                             | Inline prompt (mutually exclusive with `promptFile`)                                                |
 | `promptFile`         | string             | —                             | Path to prompt file (mutually exclusive with `prompt`)                                              |
 | `maxIterations`      | number             | `1`                           | Maximum iterations to run                                                                           |
@@ -344,15 +344,15 @@ The `.sandcastle/Dockerfile` controls the sandbox environment. The default templ
 - **Node.js 22** (base image)
 - **git**, **curl**, **jq** (system dependencies)
 - **GitHub CLI** (`gh`)
-- **Claude Code CLI**
-- A non-root `agent` user (required — Claude runs as this user)
+- **OpenAI Codex CLI**
+- A non-root `agent` user (required — Codex runs as this user)
 
 When customizing the Dockerfile, ensure you keep:
 
-- A non-root user (the default `agent` user) for Claude to run as
+- A non-root user (the default `agent` user) for Codex to run as
 - `git` (required for commits and branch operations)
 - `gh` (required for issue fetching)
-- Claude Code CLI installed and on PATH
+- OpenAI Codex CLI installed and on PATH
 
 Add your project-specific dependencies (e.g., language runtimes, build tools) to the Dockerfile as needed.
 

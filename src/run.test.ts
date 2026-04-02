@@ -12,7 +12,7 @@ import {
   type RunResult,
   type WorktreeMode,
 } from "./run.js";
-import { claudeCode } from "./AgentProvider.js";
+import { codex } from "./AgentProvider.js";
 
 describe("printFileDisplayStartup", () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -152,7 +152,7 @@ describe("RunOptions", () => {
 
   it("allows idleTimeoutSeconds to be specified", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
       idleTimeoutSeconds: 120,
     };
@@ -161,7 +161,7 @@ describe("RunOptions", () => {
 
   it("allows idleTimeoutSeconds to be omitted (uses default)", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
     };
     expect(opts.idleTimeoutSeconds).toBeUndefined();
@@ -169,7 +169,7 @@ describe("RunOptions", () => {
 
   it("allows name to be specified", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
       name: "my-run",
     };
@@ -178,7 +178,7 @@ describe("RunOptions", () => {
 
   it("allows name to be omitted", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
     };
     expect(opts.name).toBeUndefined();
@@ -186,7 +186,7 @@ describe("RunOptions", () => {
 
   it("accepts worktree with none mode", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
       worktree: { mode: "none" },
     };
@@ -195,7 +195,7 @@ describe("RunOptions", () => {
 
   it("accepts worktree with temp-branch mode", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
       worktree: { mode: "temp-branch" },
     };
@@ -204,7 +204,7 @@ describe("RunOptions", () => {
 
   it("accepts worktree with branch mode", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
       worktree: { mode: "branch", branch: "feature/my-work" },
     };
@@ -216,7 +216,7 @@ describe("RunOptions", () => {
 
   it("allows worktree to be omitted (defaults to temp-branch)", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
     };
     expect(opts.worktree).toBeUndefined();
@@ -224,7 +224,7 @@ describe("RunOptions", () => {
 
   it("does not accept a top-level branch field", () => {
     const opts: RunOptions = {
-      agent: claudeCode("claude-opus-4-6"),
+      agent: codex("gpt-5.3-codex"),
       prompt: "test",
     };
     // @ts-expect-error branch is no longer a valid field on RunOptions
@@ -258,7 +258,7 @@ describe("copyToSandbox with mode none", () => {
   it("throws a runtime error when copyToSandbox is provided with mode none", async () => {
     await expect(
       run({
-        agent: claudeCode("claude-opus-4-6"),
+        agent: codex("gpt-5.3-codex"),
         prompt: "test",
         worktree: { mode: "none" },
         copyToSandbox: [".env"],
@@ -273,7 +273,7 @@ describe("buildRunSummaryRows", () => {
   it("uses the custom name as Agent when name is provided", () => {
     const rows = buildRunSummaryRows({
       name: "Implementer #202",
-      agentName: "claude-code",
+      agentName: "codex",
       imageName: "sandcastle:myrepo",
       maxIterations: 3,
       branch: "main",
@@ -283,17 +283,17 @@ describe("buildRunSummaryRows", () => {
 
   it("falls back to agentName when no name is provided", () => {
     const rows = buildRunSummaryRows({
-      agentName: "claude-code",
+      agentName: "codex",
       imageName: "sandcastle:myrepo",
       maxIterations: 1,
       branch: "main",
     });
-    expect(rows["Agent"]).toBe("claude-code");
+    expect(rows["Agent"]).toBe("codex");
   });
 
   it("includes image, max iterations, and branch", () => {
     const rows = buildRunSummaryRows({
-      agentName: "claude-code",
+      agentName: "codex",
       imageName: "sandcastle:myrepo",
       maxIterations: 5,
       branch: "sandcastle/issue-160",
@@ -305,7 +305,7 @@ describe("buildRunSummaryRows", () => {
 
   it("does not include a Model row", () => {
     const rows = buildRunSummaryRows({
-      agentName: "claude-code",
+      agentName: "codex",
       imageName: "sandcastle:myrepo",
       maxIterations: 1,
       branch: "main",
@@ -385,8 +385,8 @@ describe("buildLogFilename", () => {
 
   it("includes agent name when branch contains agent segment", () => {
     expect(
-      buildLogFilename("sandcastle/claude-code/20260325-142719", "main"),
-    ).toBe("main-sandcastle-claude-code-20260325-142719.log");
+      buildLogFilename("sandcastle/codex/20260325-142719", "main"),
+    ).toBe("main-sandcastle-codex-20260325-142719.log");
   });
 
   it("appends run name when name is provided", () => {
