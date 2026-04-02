@@ -7,11 +7,10 @@ import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { styleText } from "node:util";
 import { Display } from "./Display.js";
-import { DEFAULT_MODEL } from "./Orchestrator.js";
 import { buildImage, removeImage } from "./DockerLifecycle.js";
 import { scaffold, listTemplates, getNextStepsLines } from "./InitService.js";
 import { defaultImageName } from "./run.js";
-import { getAgentProvider } from "./AgentProvider.js";
+import { claudeCode, DEFAULT_MODEL } from "./AgentProvider.js";
 import { AgentError, ConfigDirError, InitError } from "./errors.js";
 import {
   SandboxFactory,
@@ -76,15 +75,7 @@ const initCommand = Command.make(
       const cwd = process.cwd();
       const imageName = resolveImageName(imageNameFlag, cwd);
 
-      // Agent is hardcoded to claude-code (agent selection is not part of the public API)
-      const agentName = "claude-code";
-      const provider = yield* Effect.try({
-        try: () => getAgentProvider(agentName),
-        catch: (e) =>
-          new InitError({
-            message: `${e instanceof Error ? e.message : e}`,
-          }),
-      });
+      const provider = claudeCode(DEFAULT_MODEL);
 
       // Resolve template: CLI flag > interactive select
       const templates = listTemplates();
@@ -262,7 +253,7 @@ const interactiveSession = (options: {
   Effect.gen(function* () {
     const { hostRepoDir } = options;
     const sandboxRepoDir = SANDBOX_WORKSPACE_DIR;
-    const resolvedModel = options.model ?? DEFAULT_MODEL;
+    const provider = claudeCode(options.model ?? DEFAULT_MODEL);
     const factory = yield* SandboxFactory;
     const d = yield* Display;
 
@@ -289,9 +280,7 @@ const interactiveSession = (options: {
                     ctx.sandboxRepoDir,
                     containerId,
                     "claude",
-                    "--dangerously-skip-permissions",
-                    "--model",
-                    resolvedModel,
+                    ...provider.buildInteractiveArgs(""),
                   ],
                   { stdio: "inherit" },
                 );

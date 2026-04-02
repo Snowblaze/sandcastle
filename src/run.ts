@@ -2,7 +2,7 @@ import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import path, { join } from "node:path";
 import { styleText } from "node:util";
 import { Effect, Layer } from "effect";
-import { getAgentProvider } from "./AgentProvider.js";
+import type { AgentProvider } from "./AgentProvider.js";
 import {
   ClackDisplay,
   Display,
@@ -93,7 +93,6 @@ export interface RunSummaryRowsOptions {
   readonly imageName: string;
   readonly maxIterations: number;
   readonly branch: string;
-  readonly model?: string;
 }
 
 /**
@@ -103,16 +102,12 @@ export interface RunSummaryRowsOptions {
  */
 export const buildRunSummaryRows = (
   options: RunSummaryRowsOptions,
-): Record<string, string> => {
-  const rows: Record<string, string> = {
-    Agent: options.name ?? options.agentName,
-    Image: options.imageName,
-    "Max iterations": String(options.maxIterations),
-    Branch: options.branch,
-  };
-  if (options.model) rows["Model"] = options.model;
-  return rows;
-};
+): Record<string, string> => ({
+  Agent: options.name ?? options.agentName,
+  Image: options.imageName,
+  "Max iterations": String(options.maxIterations),
+  Branch: options.branch,
+});
 
 /**
  * Build the completion status message for a run, used in both terminal mode
@@ -146,6 +141,8 @@ export type LoggingOption =
   | { readonly type: "stdout" };
 
 export interface RunOptions {
+  /** Agent provider to use (e.g. claudeCode("claude-opus-4-6")) */
+  readonly agent: AgentProvider;
   /** Inline prompt string (mutually exclusive with promptFile) */
   readonly prompt?: string;
   /** Path to a prompt file (mutually exclusive with prompt) */
@@ -158,8 +155,6 @@ export interface RunOptions {
   };
   /** Target branch name for sandbox work */
   readonly branch?: string;
-  /** Model to use for the agent (default: claude-opus-4-6) */
-  readonly model?: string;
   /** Docker image name to use for the sandbox (default: sandcastle:<repo-dir-name>) */
   readonly imageName?: string;
   /** Key-value map for {{KEY}} placeholder substitution in prompts */
@@ -200,7 +195,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
     maxIterations = DEFAULT_MAX_ITERATIONS,
     hooks,
     branch,
-    model,
+    agent: provider,
   } = options;
 
   const hostRepoDir = process.cwd();
@@ -212,12 +207,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
     ),
   );
 
-  // Resolve model: explicit option > default
-  const resolvedModel = model;
-
-  // Agent is hardcoded to claude-code (agent selection is not part of the public API)
-  const agentName = "claude-code";
-  const provider = getAgentProvider(agentName);
+  const agentName = provider.name;
 
   // Resolve image name: explicit option > default
   const resolvedImageName = options.imageName ?? defaultImageName(hostRepoDir);
@@ -297,7 +287,6 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
         imageName: resolvedImageName,
         maxIterations,
         branch: resolvedBranch,
-        model: resolvedModel,
       });
       yield* d.summary("Sandcastle Run", rows);
 
@@ -326,7 +315,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
         hooks,
         prompt: resolvedPrompt,
         branch,
-        model: resolvedModel,
+        provider,
         completionSignal: options.completionSignal,
         idleTimeoutSeconds: options.idleTimeoutSeconds,
         name: options.name,

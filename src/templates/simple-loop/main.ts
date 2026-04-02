@@ -1,4 +1,4 @@
-import { run } from "@ai-hero/sandcastle";
+import { run, claudeCode } from "@ai-hero/sandcastle";
 
 // Simple loop: an agent that picks open GitHub issues one by one and closes them.
 // Run this with: npx tsx .sandcastle/main.ts
@@ -8,6 +8,11 @@ await run({
   // A name for this run, shown as a prefix in log output.
   name: "worker",
 
+  // The agent provider. Pass a model string to claudeCode() — sonnet balances
+  // capability and speed for most tasks. Switch to claude-opus-4-6 for harder
+  // problems, or claude-haiku-4-5-20251001 for speed.
+  agent: claudeCode("claude-sonnet-4-6"),
+
   // Path to the prompt file. Shell expressions inside are evaluated inside the
   // sandbox at the start of each iteration, so the agent always sees fresh data.
   promptFile: "./.sandcastle/prompt.md",
@@ -16,10 +21,6 @@ await run({
   // Each iteration works on a single issue. Increase this to process more issues
   // per run, or set it to 1 for a single-shot mode.
   maxIterations: 3,
-
-  // The Claude model to use. Sonnet balances capability and speed for most tasks.
-  // Switch to claude-opus-4-6 for harder problems, or claude-haiku-4-5 for speed.
-  model: "claude-sonnet-4-6",
 
   // Copy node_modules from the host into the worktree before the sandbox
   // starts. This avoids a full npm install from scratch on every iteration.

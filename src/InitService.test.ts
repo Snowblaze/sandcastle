@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scaffold, getNextStepsLines } from "./InitService.js";
 import type { AgentProvider } from "./AgentProvider.js";
-import { claudeCodeProvider } from "./AgentProvider.js";
+import { claudeCode, DEFAULT_MODEL } from "./AgentProvider.js";
 import { SANDBOX_WORKSPACE_DIR } from "./SandboxFactory.js";
 import { SKELETON_PROMPT } from "./templates.js";
 
@@ -24,6 +24,9 @@ const fakeProvider: AgentProvider = {
     FAKE_SECRET: "Fake agent secret",
   },
   dockerfileTemplate: "FROM ubuntu:latest\nRUN echo fake\n",
+  buildPrintCommand: (prompt) => `fake-agent -p '${prompt}'`,
+  buildInteractiveArgs: (_prompt) => ["--fake"],
+  parseStreamLine: (_line) => [],
 };
 
 describe("InitService scaffold", () => {
@@ -67,12 +70,12 @@ describe("InitService scaffold", () => {
 
   it("scaffolds claude-code provider correctly", async () => {
     const dir = await makeDir();
-    await runScaffold(dir, claudeCodeProvider);
+    await runScaffold(dir, claudeCode(DEFAULT_MODEL));
 
     const configDir = join(dir, ".sandcastle");
 
     const dockerfile = await readFile(join(configDir, "Dockerfile"), "utf-8");
-    expect(dockerfile).toBe(claudeCodeProvider.dockerfileTemplate);
+    expect(dockerfile).toBe(claudeCode(DEFAULT_MODEL).dockerfileTemplate);
 
     const envExample = await readFile(join(configDir, ".env.example"), "utf-8");
     expect(envExample).toContain("ANTHROPIC_API_KEY=");
@@ -104,7 +107,7 @@ describe("InitService scaffold", () => {
 
   it("Dockerfile template contains workspace mount comment", async () => {
     const dir = await makeDir();
-    await runScaffold(dir, claudeCodeProvider);
+    await runScaffold(dir, claudeCode(DEFAULT_MODEL));
 
     const dockerfile = await readFile(
       join(dir, ".sandcastle", "Dockerfile"),
@@ -115,7 +118,7 @@ describe("InitService scaffold", () => {
 
   it("claude-code Dockerfile template does not install pnpm or enable corepack", async () => {
     const dir = await makeDir();
-    await runScaffold(dir, claudeCodeProvider);
+    await runScaffold(dir, claudeCode(DEFAULT_MODEL));
 
     const dockerfile = await readFile(
       join(dir, ".sandcastle", "Dockerfile"),
@@ -417,8 +420,8 @@ describe("InitService scaffold", () => {
       expect(joined).toContain("Fake agent secret");
     });
 
-    it("lists claude-code provider env vars when using claudeCodeProvider", () => {
-      const lines = getNextStepsLines("blank", claudeCodeProvider);
+    it("lists claude-code provider env vars when using claudeCode(DEFAULT_MODEL)", () => {
+      const lines = getNextStepsLines("blank", claudeCode(DEFAULT_MODEL));
       const joined = lines.join("\n");
       expect(joined).toContain("ANTHROPIC_API_KEY");
       expect(joined).toContain("GH_TOKEN");

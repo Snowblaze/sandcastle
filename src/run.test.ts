@@ -10,6 +10,7 @@ import {
   type RunOptions,
   type RunResult,
 } from "./run.js";
+import { claudeCode } from "./AgentProvider.js";
 
 describe("printFileDisplayStartup", () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -142,29 +143,42 @@ describe("DEFAULT_MAX_ITERATIONS", () => {
 });
 
 describe("RunOptions", () => {
-  it("does not expose agent field", () => {
-    const opts: RunOptions = { prompt: "test" };
-    // @ts-expect-error agent should not be a property of RunOptions
-    expect(opts.agent).toBeUndefined();
+  it("requires agent field typed as AgentProvider", () => {
+    // @ts-expect-error agent is required
+    const _opts: RunOptions = { prompt: "test" };
   });
 
   it("allows idleTimeoutSeconds to be specified", () => {
-    const opts: RunOptions = { prompt: "test", idleTimeoutSeconds: 120 };
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+      idleTimeoutSeconds: 120,
+    };
     expect(opts.idleTimeoutSeconds).toBe(120);
   });
 
   it("allows idleTimeoutSeconds to be omitted (uses default)", () => {
-    const opts: RunOptions = { prompt: "test" };
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+    };
     expect(opts.idleTimeoutSeconds).toBeUndefined();
   });
 
   it("allows name to be specified", () => {
-    const opts: RunOptions = { prompt: "test", name: "my-run" };
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+      name: "my-run",
+    };
     expect(opts.name).toBe("my-run");
   });
 
   it("allows name to be omitted", () => {
-    const opts: RunOptions = { prompt: "test" };
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+    };
     expect(opts.name).toBeUndefined();
   });
 });
@@ -203,18 +217,7 @@ describe("buildRunSummaryRows", () => {
     expect(rows["Branch"]).toBe("sandcastle/issue-160");
   });
 
-  it("includes model when provided", () => {
-    const rows = buildRunSummaryRows({
-      agentName: "claude-code",
-      imageName: "sandcastle:myrepo",
-      maxIterations: 1,
-      branch: "main",
-      model: "claude-opus-4-6",
-    });
-    expect(rows["Model"]).toBe("claude-opus-4-6");
-  });
-
-  it("omits model when not provided", () => {
+  it("does not include a Model row", () => {
     const rows = buildRunSummaryRows({
       agentName: "claude-code",
       imageName: "sandcastle:myrepo",

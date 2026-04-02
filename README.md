@@ -49,9 +49,10 @@ npx tsx .sandcastle/main.ts
 
 ```typescript
 // 3. Run the agent via the JS API
-import { run } from "@ai-hero/sandcastle";
+import { run, claudeCode } from "@ai-hero/sandcastle";
 
 await run({
+  agent: claudeCode("claude-opus-4-6"),
   promptFile: ".sandcastle/prompt.md",
 });
 ```
@@ -61,9 +62,10 @@ await run({
 Sandcastle exports a programmatic `run()` function for use in scripts, CI pipelines, or custom tooling.
 
 ```typescript
-import { run } from "@ai-hero/sandcastle";
+import { run, claudeCode } from "@ai-hero/sandcastle";
 
 const result = await run({
+  agent: claudeCode("claude-opus-4-6"),
   promptFile: ".sandcastle/prompt.md",
 });
 
@@ -75,9 +77,12 @@ console.log(result.branch); // target branch name
 ### All options
 
 ```typescript
-import { run } from "@ai-hero/sandcastle";
+import { run, claudeCode } from "@ai-hero/sandcastle";
 
 const result = await run({
+  // Agent provider — required. Pass a model string to claudeCode().
+  agent: claudeCode("claude-opus-4-6"),
+
   // Prompt source — provide one of these, not both:
   promptFile: ".sandcastle/prompt.md", // path to a prompt file
   // prompt: "Fix issue #42 in this repo", // OR an inline prompt string
@@ -92,9 +97,6 @@ const result = await run({
 
   // Branch the agent commits to inside the sandbox.
   branch: "agent/fix-42",
-
-  // Claude model passed to the agent. Default: "claude-opus-4-6"
-  model: "claude-opus-4-6",
 
   // Docker image used for the sandbox. Default: "sandcastle:<repo-dir-name>"
   imageName: "sandcastle:local",
@@ -296,12 +298,12 @@ Removes the Docker image.
 
 | Option               | Type               | Default                       | Description                                                                 |
 | -------------------- | ------------------ | ----------------------------- | --------------------------------------------------------------------------- |
+| `agent`              | AgentProvider      | —                             | **Required.** Agent provider (e.g. `claudeCode("claude-opus-4-6")`)         |
 | `prompt`             | string             | —                             | Inline prompt (mutually exclusive with `promptFile`)                        |
 | `promptFile`         | string             | —                             | Path to prompt file (mutually exclusive with `prompt`)                      |
 | `maxIterations`      | number             | `1`                           | Maximum iterations to run                                                   |
 | `hooks`              | object             | —                             | Lifecycle hooks (`onSandboxReady`)                                          |
 | `branch`             | string             | —                             | Target branch for sandbox work                                              |
-| `model`              | string             | `claude-opus-4-6`             | Model to use for the agent                                                  |
 | `imageName`          | string             | `sandcastle:<repo-dir-name>`  | Docker image name for the sandbox                                           |
 | `name`               | string             | —                             | Display name for the run, shown as a prefix in log output                   |
 | `promptArgs`         | PromptArgs         | —                             | Key-value map for `{{KEY}}` placeholder substitution                        |
