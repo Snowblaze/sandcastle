@@ -95,8 +95,8 @@ const result = await run({
   // Maximum number of agent iterations to run before stopping. Default: 1
   maxIterations: 5,
 
-  // Branch the agent commits to inside the sandbox.
-  branch: "agent/fix-42",
+  // Worktree mode for sandbox work. Defaults to { mode: 'temp-branch' }.
+  worktree: { mode: "branch", branch: "agent/fix-42" },
 
   // Docker image used for the sandbox. Default: "sandcastle:<repo-dir-name>"
   imageName: "sandcastle:local",
@@ -140,7 +140,7 @@ Sandcastle uses a worktree-based architecture for agent execution:
 - **No sync needed**: Because the agent writes directly to the host filesystem, there are no sync-in or sync-out operations. Commits made by the agent are immediately visible on the host.
 - **Merge back**: After the run completes, the temp worktree branch is fast-forward merged back to the target branch, and the worktree is cleaned up.
 
-From your point of view, you just run `sandcastle.run({ branch: 'foo' })`, and get a commit on branch `foo` once it's complete. All 100% local.
+From your point of view, you just run `sandcastle.run({ worktree: { mode: 'branch', branch: 'foo' } })`, and get a commit on branch `foo` once it's complete. All 100% local.
 
 ## Prompts
 
@@ -303,7 +303,7 @@ Removes the Docker image.
 | `promptFile`         | string             | —                             | Path to prompt file (mutually exclusive with `prompt`)                      |
 | `maxIterations`      | number             | `1`                           | Maximum iterations to run                                                   |
 | `hooks`              | object             | —                             | Lifecycle hooks (`onSandboxReady`)                                          |
-| `branch`             | string             | —                             | Target branch for sandbox work                                              |
+| `worktree`           | WorktreeMode       | `{ mode: 'temp-branch' }`     | Worktree mode: `{ mode: 'temp-branch' }` or `{ mode: 'branch', branch }`    |
 | `imageName`          | string             | `sandcastle:<repo-dir-name>`  | Docker image name for the sandbox                                           |
 | `name`               | string             | —                             | Display name for the run, shown as a prefix in log output                   |
 | `promptArgs`         | PromptArgs         | —                             | Key-value map for `{{KEY}}` placeholder substitution                        |

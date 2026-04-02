@@ -9,6 +9,7 @@ import {
   sanitizeBranchForFilename,
   type RunOptions,
   type RunResult,
+  type WorktreeMode,
 } from "./run.js";
 import { claudeCode } from "./AgentProvider.js";
 
@@ -180,6 +181,59 @@ describe("RunOptions", () => {
       prompt: "test",
     };
     expect(opts.name).toBeUndefined();
+  });
+
+  it("accepts worktree with temp-branch mode", () => {
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+      worktree: { mode: "temp-branch" },
+    };
+    expect(opts.worktree).toEqual({ mode: "temp-branch" });
+  });
+
+  it("accepts worktree with branch mode", () => {
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+      worktree: { mode: "branch", branch: "feature/my-work" },
+    };
+    expect(opts.worktree).toEqual({
+      mode: "branch",
+      branch: "feature/my-work",
+    });
+  });
+
+  it("allows worktree to be omitted (defaults to temp-branch)", () => {
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+    };
+    expect(opts.worktree).toBeUndefined();
+  });
+
+  it("does not accept a top-level branch field", () => {
+    const opts: RunOptions = {
+      agent: claudeCode("claude-opus-4-6"),
+      prompt: "test",
+    };
+    // @ts-expect-error branch is no longer a valid field on RunOptions
+    expect(opts.branch).toBeUndefined();
+  });
+});
+
+describe("WorktreeMode", () => {
+  it("temp-branch mode has no branch field", () => {
+    const mode: WorktreeMode = { mode: "temp-branch" };
+    expect(mode.mode).toBe("temp-branch");
+    // @ts-expect-error branch does not exist on temp-branch mode
+    expect(mode.branch).toBeUndefined();
+  });
+
+  it("branch mode requires a branch field", () => {
+    const mode: WorktreeMode = { mode: "branch", branch: "my-branch" };
+    expect(mode.mode).toBe("branch");
+    expect(mode.branch).toBe("my-branch");
   });
 });
 

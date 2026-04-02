@@ -774,6 +774,7 @@ describe("OrchestrateResult", () => {
 
     const result = await Effect.runPromise(
       orchestrate({
+        provider: testProvider,
         hostRepoDir: hostDir,
         sandboxRepoDir: sandboxBaseDir,
         iterations: 1,

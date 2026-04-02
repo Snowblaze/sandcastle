@@ -93,7 +93,7 @@ describe("WorktreeDockerSandboxFactory", () => {
           imageName: "test-image",
           env: {},
           hostRepoDir,
-          branch: "feature/my-branch",
+          worktree: { mode: "branch", branch: "feature/my-branch" },
         }),
         NodeFileSystem.layer,
         SilentDisplay.layer(Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([])),

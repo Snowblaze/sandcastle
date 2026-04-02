@@ -93,7 +93,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     promptArgs: {
       BRANCH: branch,
     },
-    branch,
+    worktree: { mode: "branch", branch },
   });
 
   console.log("\nReview complete.");

@@ -120,7 +120,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           BRANCH: issue.branch,
         },
         // Each agent starts on its own branch.
-        branch: issue.branch,
+        worktree: { mode: "branch", branch: issue.branch },
       }),
     ),
   );

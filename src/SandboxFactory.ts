@@ -275,8 +275,8 @@ export class WorktreeSandboxConfig extends Context.Tag("WorktreeSandboxConfig")<
     readonly imageName: string;
     readonly env: Record<string, string>;
     readonly hostRepoDir: string;
-    /** When specified, the worktree checks out this branch. Otherwise a temp branch is created. */
-    readonly branch?: string;
+    /** Worktree mode: temp-branch (default) or explicit branch. */
+    readonly worktree?: import("./run.js").WorktreeMode;
     /** Paths relative to the host repo root to copy into the worktree before container start. */
     readonly copyToSandbox?: string[];
     /** When specified, the agent name is included in the auto-generated branch and worktree names. */
@@ -309,10 +309,12 @@ export const WorktreeDockerSandboxFactory = {
         imageName,
         env,
         hostRepoDir,
-        branch,
+        worktree: worktreeMode,
         copyToSandbox: copyPaths,
         agentName,
       } = yield* WorktreeSandboxConfig;
+      const branch =
+        worktreeMode?.mode === "branch" ? worktreeMode.branch : undefined;
       const fileSystem = yield* FileSystem.FileSystem;
       const display = yield* Display;
       return {

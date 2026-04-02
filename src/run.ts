@@ -140,6 +140,15 @@ export type LoggingOption =
   /** Render progress and agent output as an interactive UI in the terminal (terminal mode). */
   | { readonly type: "stdout" };
 
+/**
+ * Worktree mode discriminated union.
+ * - `temp-branch`: creates a temporary worktree/branch, merges back, deletes the temp branch (default).
+ * - `branch`: creates a worktree on an explicit branch; commits stay on that branch.
+ */
+export type WorktreeMode =
+  | { readonly mode: "temp-branch" }
+  | { readonly mode: "branch"; readonly branch: string };
+
 export interface RunOptions {
   /** Agent provider to use (e.g. claudeCode("claude-opus-4-6")) */
   readonly agent: AgentProvider;
@@ -153,8 +162,8 @@ export interface RunOptions {
   readonly hooks?: {
     readonly onSandboxReady?: ReadonlyArray<{ command: string }>;
   };
-  /** Target branch name for sandbox work */
-  readonly branch?: string;
+  /** Worktree mode for sandbox work. Defaults to `{ mode: 'temp-branch' }` when omitted. */
+  readonly worktree?: WorktreeMode;
   /** Docker image name to use for the sandbox (default: sandcastle:<repo-dir-name>) */
   readonly imageName?: string;
   /** Key-value map for {{KEY}} placeholder substitution in prompts */
@@ -194,9 +203,16 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
     promptFile,
     maxIterations = DEFAULT_MAX_ITERATIONS,
     hooks,
-    branch,
     agent: provider,
   } = options;
+
+  // Resolve worktree mode: default to temp-branch when omitted
+  const worktreeMode: WorktreeMode = options.worktree ?? {
+    mode: "temp-branch",
+  };
+  // Extract explicit branch when in branch mode, undefined for temp-branch mode
+  const branch =
+    worktreeMode.mode === "branch" ? worktreeMode.branch : undefined;
 
   const hostRepoDir = process.cwd();
 
@@ -217,7 +233,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
     resolveEnv(hostRepoDir).pipe(Effect.provide(NodeContext.layer)),
   );
 
-  // When no branch is provided, generate a temporary branch name.
+  // When in temp-branch mode, generate a temporary branch name.
   // This names the log file after the temp branch and also directs
   // the sandbox to work on that branch (instead of the current host branch).
   const resolvedBranch = branch ?? generateTempBranchName(agentName);
@@ -230,7 +246,8 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
 
   // When using a temp branch, prefix the log filename with the target branch
   // (the host's current branch) so developers can tell which branch was targeted.
-  const targetBranch = branch === undefined ? currentHostBranch : undefined;
+  const targetBranch =
+    worktreeMode.mode === "temp-branch" ? currentHostBranch : undefined;
 
   // Resolve logging option
   const resolvedLogging: LoggingOption = options.logging ?? {
@@ -264,9 +281,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
         imageName: resolvedImageName,
         env,
         hostRepoDir,
-        // Pass explicit branch only — when undefined, WorktreeManager creates a temp branch
-        // and SandboxLifecycle cherry-picks commits onto the host's current branch
-        branch,
+        worktree: worktreeMode,
         copyToSandbox: options.copyToSandbox,
         agentName,
       }),
