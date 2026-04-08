@@ -281,12 +281,16 @@ describe("WorktreeDockerSandboxFactory", () => {
       }).pipe(Effect.provide(layerWithCodexAuth)),
     );
 
-    const restoreCall = capturedArgs().find(
-      (args) =>
-        args[0] === "exec" &&
-        args.includes("CODEX_AUTH_JSON_B64") &&
-        args.includes('printf "%s" "$CODEX_AUTH_JSON_B64" | base64 -d > "$HOME/.codex/auth.json"'),
-    );
+    const restoreCall = capturedArgs().find((args) => {
+      if (args[0] !== "exec") return false;
+      const joined = args.join(" ");
+      return (
+        joined.includes("CODEX_AUTH_JSON_B64") &&
+        joined.includes(
+          'printf "%s" "$CODEX_AUTH_JSON_B64" | base64 -d > "$HOME/.codex/auth.json"',
+        )
+      );
+    });
     expect(restoreCall).toBeDefined();
   });
 

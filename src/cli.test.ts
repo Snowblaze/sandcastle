@@ -11,6 +11,7 @@ const initRepo = async (dir: string) => {
   await execAsync("git init -b main", { cwd: dir });
   await execAsync('git config user.email "test@test.com"', { cwd: dir });
   await execAsync('git config user.name "Test"', { cwd: dir });
+  await execAsync("git config commit.gpgsign false", { cwd: dir });
 };
 
 const commitFile = async (
