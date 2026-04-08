@@ -42,33 +42,6 @@ const extractUsage = (obj: Record<string, unknown>): TokenUsage | null => {
   };
 };
 
-const extractCodexUsage = (obj: Record<string, unknown>): TokenUsage | null => {
-  const usageSource =
-    (obj.last_token_usage as Record<string, unknown> | undefined) ??
-    ((obj.info as Record<string, unknown> | undefined)?.last_token_usage as
-      | Record<string, unknown>
-      | undefined);
-  if (
-    !usageSource ||
-    typeof usageSource.input_tokens !== "number" ||
-    typeof usageSource.output_tokens !== "number"
-  ) {
-    return null;
-  }
-  return {
-    input_tokens: usageSource.input_tokens,
-    output_tokens: usageSource.output_tokens,
-    cache_read_input_tokens:
-      typeof usageSource.cached_input_tokens === "number"
-        ? usageSource.cached_input_tokens
-        : 0,
-    cache_creation_input_tokens: 0,
-    total_cost_usd: 0,
-    num_turns: typeof obj.num_turns === "number" ? obj.num_turns : 0,
-    duration_ms: typeof obj.duration_ms === "number" ? obj.duration_ms : 0,
-  };
-};
-
 /** Maps allowlisted tool names to the input field containing the display arg */
 const TOOL_ARG_FIELDS: Record<string, string> = {
   Bash: "command",
@@ -207,113 +180,34 @@ export const pi = (model: string): AgentProvider => ({
 // Codex agent provider
 // ---------------------------------------------------------------------------
 
-const parseCodexToolEvent = (
-  obj: Record<string, unknown>,
-): ParsedStreamEvent[] => {
-  const item = obj.item as Record<string, unknown> | undefined;
-  if (
-    obj.type === "item.started" &&
-    item?.type === "command_execution" &&
-    typeof item.command === "string"
-  ) {
-    return [{ type: "tool_call", name: "Bash", args: item.command }];
-  }
-
-  if (obj.type === "exec_command_begin" && typeof obj.command === "string") {
-    return [{ type: "tool_call", name: "Bash", args: obj.command }];
-  }
-
-  if (obj.type === "web_search_begin") {
-    const query =
-      typeof obj.query === "string"
-        ? obj.query
-        : Array.isArray(obj.queries)
-          ? obj.queries.find((value): value is string => typeof value === "string")
-          : undefined;
-    if (query) {
-      return [{ type: "tool_call", name: "WebSearch", args: query }];
-    }
-  }
-
-  if (obj.type === "view_image_tool_call" && typeof obj.path === "string") {
-    return [{ type: "tool_call", name: "ViewImage", args: obj.path }];
-  }
-
-  const invocation = obj.invocation as Record<string, unknown> | undefined;
-  if (obj.type === "mcp_tool_call_begin" && invocation) {
-    const serverName =
-      typeof invocation.server_name === "string"
-        ? invocation.server_name
-        : typeof invocation.server === "string"
-          ? invocation.server
-          : undefined;
-    const toolName =
-      typeof invocation.tool_name === "string"
-        ? invocation.tool_name
-        : typeof invocation.tool === "string"
-          ? invocation.tool
-          : undefined;
-    if (serverName && toolName) {
-      return [{ type: "tool_call", name: `${serverName}/${toolName}`, args: "" }];
-    }
-  }
-
-  return [];
-};
-
 const parseCodexStreamLine = (line: string): ParsedStreamEvent[] => {
   if (!line.startsWith("{")) return [];
   try {
-    const obj = JSON.parse(line) as Record<string, unknown>;
-    const item = obj.item as Record<string, unknown> | undefined;
+    const obj = JSON.parse(line);
+
+    // item.completed with agent_message → text + result
     if (
       obj.type === "item.completed" &&
-      item?.type === "agent_message" &&
-      typeof item.content === "string"
+      obj.item?.type === "agent_message" &&
+      typeof obj.item.content === "string"
     ) {
-      const text = item.content;
+      const text = obj.item.content;
       return [
         { type: "text", text },
-        {
-          type: "result",
-          result: text,
-          usage: extractUsage(obj) ?? extractCodexUsage(obj),
-        },
+        { type: "result", result: text, usage: extractUsage(obj) },
       ];
     }
 
+    // item.started with command_execution → tool call
     if (
-      (obj.type === "agent_message" || obj.type === "agent_message_delta") &&
-      typeof obj.message === "string"
+      obj.type === "item.started" &&
+      obj.item?.type === "command_execution" &&
+      typeof obj.item.command === "string"
     ) {
-      return [{ type: "text", text: obj.message }];
+      return [{ type: "tool_call", name: "Bash", args: obj.item.command }];
     }
 
-    if (
-      (obj.type === "agent_message_delta" ||
-        obj.type === "agent_message_content_delta" ||
-        obj.type === "reasoning_content_delta") &&
-      typeof obj.delta === "string"
-    ) {
-      return [{ type: "text", text: obj.delta }];
-    }
-
-    if (
-      (obj.type === "task_complete" ||
-        obj.type === "turn.completed" ||
-        obj.type === "turn_complete") &&
-      typeof obj.last_agent_message === "string"
-    ) {
-      return [
-        {
-          type: "result",
-          result: obj.last_agent_message,
-          usage: extractCodexUsage(obj) ?? extractUsage(obj),
-        },
-      ];
-    }
-
-    return parseCodexToolEvent(obj);
+    // turn.completed → skip
   } catch {
     // Not valid JSON — skip
   }
@@ -324,16 +218,11 @@ export const codex = (model: string): AgentProvider => ({
   name: "codex",
 
   buildPrintCommand(prompt: string): string {
-    return `codex exec --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --model ${shellEscape(model)} ${shellEscape(prompt)}`;
+    return `codex exec --json --dangerously-bypass-approvals-and-sandbox -m ${shellEscape(model)} ${shellEscape(prompt)}`;
   },
 
   buildInteractiveArgs(_prompt: string): string[] {
-    return [
-      "codex",
-      "--dangerously-bypass-approvals-and-sandbox",
-      "--model",
-      model,
-    ];
+    return ["codex", "--model", model];
   },
 
   parseStreamLine(line: string): ParsedStreamEvent[] {
