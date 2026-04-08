@@ -33,7 +33,7 @@
     "ai",
     "agent"
   ],
-  "packageManager": "npm@10.9.2",
+  "packageManager": "pnpm@9.0.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/mattpocock/sandcastle"
